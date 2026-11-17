@@ -1,0 +1,203 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { buildEntry, validateHabitName } from '../domain/entries';
+import { DEFAULT_PROFILE } from '../domain/types';
+import type {
+  EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry, HabitInput, LocalDate, PhaseChange, Profile,
+} from '../domain/types';
+import { planFieldSync } from './fieldSync';
+import { RepositoryError, type Repository, type Snapshot } from './repository';
+
+type Row = Record<string, any>;
+
+const t = (v: string | null | undefined) => (v ? v.slice(0, 5) : null); // "07:30:00" -> "07:30"
+
+export const mapProfile = (r: Row): Profile => ({
+  displayName: r.display_name, goals: r.goals ?? [], habitBacklog: r.habit_backlog ?? [], mode: r.mode, locale: r.locale, timezone: r.timezone,
+  defaultReminderTime: t(r.default_reminder_time), phaseThreshold: Number(r.phase_threshold),
+  phaseWindowDays: r.phase_window_days, onboardingCompleted: r.onboarding_completed,
+});
+const profileRow = (p: Profile) => ({
+  display_name: p.displayName, goals: p.goals, habit_backlog: p.habitBacklog, mode: p.mode, locale: p.locale, timezone: p.timezone,
+  default_reminder_time: p.defaultReminderTime, phase_threshold: p.phaseThreshold,
+  phase_window_days: p.phaseWindowDays, onboarding_completed: p.onboardingCompleted,
+});
+
+export const mapHabit = (r: Row): Habit => ({
+  id: r.id, name: r.name, category: r.category, icon: r.icon, description: r.description, goal: r.goal,
+  scheduleType: r.schedule_type, weekdays: r.weekdays, timesPerWeek: r.times_per_week,
+  reminderTime: t(r.reminder_time), reminderEnabled: r.reminder_enabled, startDate: r.start_date,
+  phase: r.phase, status: r.status, pausePeriods: r.pause_periods ?? [], sortOrder: r.sort_order,
+  phaseSuggestionDismissedUntil: r.phase_suggestion_dismissed_until, createdAt: r.created_at, updatedAt: r.updated_at,
+});
+const habitRow = (h: Partial<HabitInput>) => {
+  const m: Row = {
+    name: h.name, category: h.category, icon: h.icon, description: h.description, goal: h.goal,
+    schedule_type: h.scheduleType, weekdays: h.weekdays, times_per_week: h.timesPerWeek,
+    reminder_time: h.reminderTime, reminder_enabled: h.reminderEnabled, start_date: h.startDate,
+    phase: h.phase, status: h.status, pause_periods: h.pausePeriods, sort_order: h.sortOrder,
+    phase_suggestion_dismissed_until: h.phaseSuggestionDismissedUntil,
+  };
+  Object.keys(m).forEach((k) => m[k] === undefined && delete m[k]);
+  return m;
+};
+
+export const mapField = (r: Row): FieldDefinition => ({
+  id: r.id, habitId: r.habit_id, key: r.key, label: r.label, type: r.type, unit: r.unit,
+  minPhase: r.min_phase, sortOrder: r.sort_order, archived: r.archived,
+});
+const fieldRow = (f: FieldDefinition, userId: string) => ({
+  id: f.id, user_id: userId, habit_id: f.habitId, key: f.key, label: f.label, type: f.type, unit: f.unit,
+  min_phase: f.minPhase, sort_order: f.sortOrder, archived: f.archived,
+});
+
+export const mapEntry = (r: Row): HabitEntry => ({
+  id: r.id, habitId: r.habit_id, localDate: r.local_date, status: r.status, postponedTo: r.postponed_to,
+  values: r.field_values ?? {}, fieldSnapshot: r.field_snapshot ?? [], habitNameSnapshot: r.habit_name_snapshot,
+  note: r.note, completedAt: r.completed_at, createdAt: r.created_at, updatedAt: r.updated_at,
+});
+
+const mapPhaseChange = (r: Row): PhaseChange => ({
+  id: r.id, habitId: r.habit_id, fromPhase: r.from_phase, toPhase: r.to_phase, reason: r.reason, createdAt: r.created_at,
+});
+
+function checkMaybe<T>(res: { data: T; error: { message: string } | null }): T {
+  if (res.error) throw new RepositoryError(res.error.message, res.error);
+  return res.data;
+}
+
+function check<T>(res: { data: T; error: { message: string } | null }): NonNullable<T> {
+  const data = checkMaybe(res);
+  if (data === null || data === undefined) throw new RepositoryError('not_found');
+  return data as NonNullable<T>;
+}
+
+/**
+ * PostgreSQL via Supabase. Authorisation is enforced server-side by RLS
+ * (user_id = auth.uid()); the client never holds service keys.
+ */
+export class SupabaseRepository implements Repository {
+  readonly kind = 'supabase' as const;
+
+  constructor(private readonly db: SupabaseClient, private readonly newId: () => string) {}
+
+  private async userId(): Promise<string> {
+    const { data } = await this.db.auth.getUser();
+    if (!data.user) throw new RepositoryError('not_authenticated');
+    return data.user.id;
+  }
+
+  async load(sinceDate: LocalDate): Promise<Snapshot> {
+    const [p, h, f, e, c] = await Promise.all([
+      this.db.from('profiles').select('*').maybeSingle(),
+      this.db.from('habits').select('*').order('sort_order'),
+      this.db.from('field_definitions').select('*').order('sort_order'),
+      this.db.from('habit_entries').select('*').gte('local_date', sinceDate),
+      this.db.from('habit_phase_changes').select('*').order('created_at'),
+    ]);
+    const profileRowData = checkMaybe(p);
+    return {
+      profile: profileRowData ? mapProfile(profileRowData) : { ...DEFAULT_PROFILE },
+      habits: check(h).map(mapHabit),
+      fields: check(f).map(mapField),
+      entries: check(e).map(mapEntry),
+      phaseChanges: check(c).map(mapPhaseChange),
+    };
+  }
+
+  async saveProfile(p: Profile): Promise<Profile> {
+    const user_id = await this.userId();
+    const row = check(await this.db.from('profiles').upsert({ user_id, ...profileRow(p) }).select().single());
+    return mapProfile(row);
+  }
+
+  async createHabit(input: HabitInput, fields: FieldInput[]) {
+    const user_id = await this.userId();
+    const id = this.newId();
+    const row = check(
+      await this.db.from('habits').insert({ id, user_id, ...habitRow({ ...input, name: validateHabitName(input.name) }) }).select().single(),
+    );
+    const plan = planFieldSync(id, [], fields, [], this.newId);
+    if (plan.upsert.length) {
+      const res = await this.db.from('field_definitions').insert(plan.upsert.map((f) => fieldRow(f, user_id)));
+      if (res.error) {
+        await this.db.from('habits').delete().eq('id', id); // compensate – no half-created habit
+        throw new RepositoryError(res.error.message, res.error);
+      }
+    }
+    return { habit: mapHabit(row), fields: plan.upsert };
+  }
+
+  async updateHabit(id: string, patch: Partial<HabitInput>, fields?: FieldInput[]) {
+    const user_id = await this.userId();
+    if (patch.name !== undefined) patch = { ...patch, name: validateHabitName(patch.name) };
+    const row = check(await this.db.from('habits').update(habitRow(patch)).eq('id', id).select().single());
+    if (fields) {
+      const current = check(await this.db.from('field_definitions').select('*').eq('habit_id', id)).map(mapField);
+      const used = check(await this.db.from('habit_entries').select('habit_id, field_values').eq('habit_id', id))
+        .map((r: Row) => ({ habitId: r.habit_id, values: r.field_values })) as HabitEntry[];
+      const plan = planFieldSync(id, current, fields, used, this.newId);
+      if (plan.remove.length) checkMaybe(await this.db.from('field_definitions').delete().in('id', plan.remove));
+      if (plan.archive.length) checkMaybe(await this.db.from('field_definitions').update({ archived: true }).in('id', plan.archive));
+      if (plan.upsert.length) checkMaybe(await this.db.from('field_definitions').upsert(plan.upsert.map((f) => fieldRow(f, user_id))));
+    }
+    const all = check(await this.db.from('field_definitions').select('*').eq('habit_id', id)).map(mapField);
+    return { habit: mapHabit(row), fields: all };
+  }
+
+  async deleteHabit(id: string) {
+    checkMaybe(await this.db.from('habits').delete().eq('id', id));
+  }
+
+  async upsertEntry(input: EntryInput): Promise<HabitEntry> {
+    const user_id = await this.userId();
+    const [h, f, e] = await Promise.all([
+      this.db.from('habits').select('*').eq('id', input.habitId).single(),
+      this.db.from('field_definitions').select('*').eq('habit_id', input.habitId),
+      this.db.from('habit_entries').select('*').eq('habit_id', input.habitId).eq('local_date', input.localDate).maybeSingle(),
+    ]);
+    const existingRow = checkMaybe(e);
+    const entry = buildEntry(input, mapHabit(check(h)), check(f).map(mapField), existingRow ? mapEntry(existingRow) : null, {
+      newId: this.newId,
+      now: () => new Date().toISOString(),
+    });
+    const row = check(
+      await this.db
+        .from('habit_entries')
+        .upsert(
+          {
+            id: entry.id, user_id, habit_id: entry.habitId, local_date: entry.localDate, status: entry.status,
+            postponed_to: entry.postponedTo, field_values: entry.values, field_snapshot: entry.fieldSnapshot,
+            habit_name_snapshot: entry.habitNameSnapshot, note: entry.note, completed_at: entry.completedAt,
+          },
+          { onConflict: 'habit_id,local_date' },
+        )
+        .select()
+        .single(),
+    );
+    return mapEntry(row);
+  }
+
+  async deleteEntry(habitId: string, localDate: LocalDate) {
+    checkMaybe(await this.db.from('habit_entries').delete().eq('habit_id', habitId).eq('local_date', localDate));
+  }
+
+  async addPhaseChange(c: Omit<PhaseChange, 'id' | 'createdAt'>) {
+    const user_id = await this.userId();
+    const row = check(
+      await this.db.from('habit_phase_changes')
+        .insert({ user_id, habit_id: c.habitId, from_phase: c.fromPhase, to_phase: c.toPhase, reason: c.reason })
+        .select().single(),
+    );
+    return mapPhaseChange(row);
+  }
+
+  async deleteAllData() {
+    const res = await this.db.rpc('delete_my_account');
+    if (res.error) throw new RepositoryError(res.error.message, res.error);
+    await this.db.auth.signOut();
+  }
+
+  async exportAll() {
+    return this.load('1900-01-01');
+  }
+}

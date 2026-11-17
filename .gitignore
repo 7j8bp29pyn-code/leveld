@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local env
+.env
+.env*.local
+e2e-failure.png

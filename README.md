@@ -1,0 +1,89 @@
+# LEVELD
+
+**Veränderung, die mit dir wächst.**
+
+Personalisierbare App für Gewohnheiten, Training, Gesundheit und Performance – React Native (Expo SDK 58, TypeScript) mit Supabase/PostgreSQL.
+
+Architektur, Datenmodell, Fachregeln und Entwicklungsplan: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+## Schnellstart
+
+```bash
+npm install
+```
+
+```bash
+npx expo start
+```
+
+Ohne Konfiguration läuft die App im **lokalen Modus** (Daten nur auf dem Gerät, kein Konto). Für Konten und Cloud-Speicherung siehe unten.
+
+## Tests
+
+```bash
+npm test             # Jest: Datum, Planung, Statistik, Phasen, lokale Speicherung
+```
+
+```bash
+npm run test:db      # Schema + Row Level Security gegen ein temporäres lokales PostgreSQL
+```
+
+```bash
+npm run typecheck && npm run lint
+```
+
+```bash
+npx expo export --platform web --output-dir dist && npm run test:e2e   # Playwright-E2E gegen den Web-Build
+```
+
+## Supabase einrichten (Cloud-Modus mit Konten)
+
+1. Projekt auf supabase.com anlegen (EU-Region empfohlen).
+2. Migration einspielen: `supabase/migrations/20261117000001_init.sql` (SQL-Editor oder `supabase db push`).
+3. Unter *Authentication → Providers* E-Mail/Passwort aktivieren.
+4. `.env.example` nach `.env` kopieren und `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` eintragen.
+5. App neu starten → Anmeldebildschirm erscheint.
+
+## Status – Phase 1 (Funktionsfähige Grundlage)
+
+### Implementiert und automatisiert getestet
+
+| Funktion | Nachweis |
+|---|---|
+| Onboarding (Name, Ziele, Aktivitäten inkl. eigener, Erinnerungszeit, Modus geführt/eigen) | E2E |
+| Geführter Modus: max. 3 aktive Start-Gewohnheiten, Rest „für später vorgemerkt“ | E2E |
+| Dashboard HEUTE: Tagesfortschritt, „Als Nächstes“, Abhaken mit einem Tipp, Rückgängig | E2E |
+| Auslassen / Pausieren / Verschieben ohne Wertung als Scheitern | Unit + E2E |
+| Nachträgliche Korrektur (vergangene Tage, Eintrag bearbeiten/entfernen) | Unit + E2E |
+| Frei konfigurierbare Gewohnheiten: Name, Symbol, Kategorie, Ziel, Beschreibung, Häufigkeit (täglich/Wochentage/x pro Woche), Erinnerung, Startdatum, Phase, Pausieren, Archivieren, Löschen | E2E (Teilmenge) + Unit |
+| Individuelle Messfelder je Phase (Habit Depth), Vorlagen | Unit + E2E |
+| Umbenennen ohne Verlust der Historie (Pole Dance → Tennis) | Unit + SQL + E2E |
+| Keine doppelten Einträge (ein Eintrag je Gewohnheit/Tag) | Unit + SQL |
+| Phasenvorschläge (konfigurierbarer Orientierungswert, Mindestdatenmenge, „Später“) | Unit |
+| Fortschritt: Woche/Monat/90 Tage/eigener Zeitraum, Quote, Filter je Gewohnheit, Tagesdiagramm (Lücke ≠ 0), Serien | Unit + E2E |
+| Persistenz lokal (atomar, serialisierte Schreibvorgänge, kein Zustandswechsel bei Schreibfehler) | Unit + E2E (Reload) |
+| Datenbank-Schema aller Phasen, RLS-Datenisolierung, Konto-Löschung (Cascade) | `npm run test:db` |
+| Alle Daten exportieren (JSON) / alle Daten löschen | E2E (Löschen) |
+| Sprache Deutsch/Englisch umschaltbar; Polnisch/Russisch vorbereitet (englischer Fallback, gekennzeichnet) | E2E (de ↔ en) |
+
+### Implementiert, aber nicht automatisiert getestet
+
+- **Supabase-Repository + Anmeldung/Registrierung**: Code vollständig, Schema & RLS getestet – Ende-zu-Ende gegen ein echtes Supabase-Projekt **nicht** getestet (keine Zugangsdaten in dieser Umgebung).
+- **Lokale Erinnerungen** (`expo-notifications`, täglich/wöchentlich, Tipp öffnet direkt den Eintrag): nur auf iOS/Android wirksam; im Web wird „nicht verfügbar“ angezeigt. Auf echten Geräten noch nicht getestet.
+- JSON-Export auf iOS/Android (System-Teilen-Dialog).
+
+### Noch nicht implementiert (in der App als „Geplant“ gekennzeichnet)
+
+Phase 2: Trainings/Übungen/Sätze, Körperdaten, Supplements & Medikamente, Ernährung & Protein, Schritte · Phase 3: PDF/CSV/XLSX-Berichte, Coach-Bericht · Phase 4: KI-Funktionen · Phase 5: Apple Health / Health Connect. Das Datenbankschema dafür existiert bereits.
+
+Bekannte Vereinfachungen: Wird eine Aktivität auf einen Tag verschoben, an dem sie ohnehin geplant ist, gibt es dort nur einen Termin. Datumsauswahl im Editor/Zeitraum erfolgt per Texteingabe (JJJJ-MM-TT).
+
+## Benötigte externe Dienste / Zugangsdaten
+
+| Wofür | Was | Wann |
+|---|---|---|
+| Konten & Cloud-Speicher | Supabase-Projekt (URL + Anon-Key) | ab sofort optional |
+| App-Builds / Stores | Expo-Konto (EAS), Apple Developer Program, Google Play Console | Veröffentlichung |
+| KI-Funktionen | API-Schlüssel eines KI-Anbieters – **nur** als Supabase-Function-Secret | Phase 4 |
+| Apple Health / Health Connect | Development Build, HealthKit-Entitlement | Phase 5 |
+| Rechtliches | DSGVO-Prüfung (AVV, Datenschutzerklärung, DSFA für Gesundheitsdaten) | vor Veröffentlichung |
