@@ -11,6 +11,7 @@ const en: Widen<typeof de> = {
     noData: 'No data', today: 'Today', yesterday: 'Yesterday', tomorrow: 'Tomorrow',
   },
   errors: {
+    upload_requires_account: 'Uploading requires an account.', unsupported_file: 'Only PDF or image (JPG, PNG, HEIC).', empty_file: 'The file is empty.', file_too_large: 'The file is larger than 10 MB.',
     invalid_rpe: 'RPE from 1 to 10', out_of_range: 'Value out of range', end_before_start: 'End is before start', cycle_not_found: 'Block not found',
     required: 'Required', too_long: 'Too long', invalid_number: 'Please enter a number', invalid_time: 'Time as HH:MM',
     invalid_rating: 'Value from 1 to 5', negative: 'Must not be negative', postpone_target_must_be_later: 'Target date must be after the day.',
@@ -113,7 +114,7 @@ const en: Widen<typeof de> = {
       endurance: 'Improve endurance', mobility: 'Improve mobility', sleep: 'Improve sleep', stress: 'Reduce stress' },
     customGoal: 'Individual goal',
     startTitle: 'How do you want to start?',
-    existing_plan: 'I already have a training plan.', existing_planText: 'You log your sessions. Photo/PDF import follows (in development).',
+    existing_plan: 'I already have a training plan.', existing_planText: 'Upload your plan as a photo or PDF (Habits → Training plans). Automatic recognition follows.',
     generate_plan: 'I want a plan to be created.', generate_planText: 'Professionally reviewed base templates are in preparation. Until then we create a training habit on your days.',
     habits_only: 'I want to build habits first.', habits_onlyText: 'You can add training any time later.',
     detailsTitle: 'A few training details', detailsHint: 'All optional – you can skip this.',
@@ -186,7 +187,9 @@ const en: Widen<typeof de> = {
     offset: 'Offset (minutes)', sleepWarning: 'This time is within your sleep time – the reminder is skipped then.' },
   features: { title: 'Features', hint: 'Switch on or off independently of your level.',
     detailedLogging: 'Detailed training logging (exercises, sets, weights)', rpe: 'Perceived exertion (RPE 1–10)', cycles: 'Training cycles', checkin: 'Health check-in' },
-  health: { title: 'Health data', consentGiven: 'Consent given on {{date}}.', none: 'No consent – no health information is stored.',
+  health: {
+    checkinNow: 'Check-in for today', checkinDone: 'Already checked in today – change',
+    title: 'Health data', consentGiven: 'Consent given on {{date}}.', none: 'No consent – no health information is stored.',
     withdraw: 'Withdraw consent & delete check-ins', withdrawConfirm: 'Switch off the health check-in and permanently delete all stored check-ins?' },
   motivation: {
     supportive: { done: 'Well done – {{name}} is complete.', adapted: 'Nicely adapted. A lighter session moves you forward too.',
@@ -197,6 +200,15 @@ const en: Widen<typeof de> = {
       health_pause: 'Being ill is not a training stimulus. Back to bed.', comeback: 'Look who’s back! Welcome.' },
     factual: { done: '{{name}}: done.', adapted: 'Session completed in adapted form.', recovery: 'Recovery logged.',
       rest_day: 'Planned rest day completed.', health_pause: 'Training suspended for health reasons.', comeback: 'Return logged.' },
+  },
+  plans: {
+    title: 'Training plans', hint: 'Upload your existing plan as a photo or PDF. The file is stored privately in your account – only you can see it.',
+    photo: 'Take photo', library: 'Choose from photos', pdf: 'Choose PDF', name: 'Title (optional)', namePlaceholder: 'e.g. Push/Pull/Legs',
+    empty: 'No plan uploaded yet.', open: 'Open', uploading: 'Uploading …', uploaded: 'Plan saved.',
+    aiSoon: 'Automatic recognition of exercises, sets and weights follows (AI, in development). Until then you enter the exercises in your training habit yourself.',
+    localOnly: 'Uploading is only available with an account (cloud mode).', limit: 'PDF, JPG, PNG or HEIC · max. 10 MB',
+    cardTitle: 'Upload your training plan', cardText: 'You said you already have a plan. Upload it as a photo or PDF so you always have it with you.',
+    deleteConfirm: 'Permanently delete “{{name}}”?', cameraDenied: 'No camera access allowed.',
   },
   more: {
     title: 'More', profile: 'Profile', name: 'Name', mode: 'Mode', guided: 'Guided', custom: 'Own plan', phaseSettings: 'Phase suggestions',

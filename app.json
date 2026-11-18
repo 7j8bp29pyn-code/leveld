@@ -40,7 +40,14 @@
         }
       ],
       "expo-apple-authentication",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "LEVELD möchte auf deine Fotos zugreifen, damit du einen Trainingsplan hochladen kannst.",
+          "cameraPermission": "LEVELD möchte die Kamera nutzen, damit du deinen Trainingsplan fotografieren kannst."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

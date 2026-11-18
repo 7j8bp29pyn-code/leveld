@@ -2,7 +2,7 @@ import { buildEntry, validateCheckin, validateCycle, validateDaySchedule, valida
 import { DEFAULT_PROFILE, normalizeHabit, normalizeProfile } from '../domain/types';
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldInput, Habit, HabitInput, LocalDate, PhaseChange,
-  Profile, TrainingCycle,
+  Profile, TrainingCycle, TrainingPlan,
 } from '../domain/types';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
@@ -44,7 +44,7 @@ export class LocalRepository implements Repository {
     if (!raw) {
       this.cache = {
         schemaVersion: SCHEMA_VERSION, profile: { ...DEFAULT_PROFILE }, habits: [], fields: [], entries: [], phaseChanges: [],
-        checkins: [], cycles: [], daySchedules: [],
+        checkins: [], cycles: [], daySchedules: [], trainingPlans: [],
       };
       return this.cache;
     }
@@ -61,6 +61,7 @@ export class LocalRepository implements Repository {
         checkins: parsed.checkins ?? [],
         cycles: parsed.cycles ?? [],
         daySchedules: parsed.daySchedules ?? [],
+        trainingPlans: parsed.trainingPlans ?? [],
       };
       return this.cache;
     } catch (e) {
@@ -219,6 +220,19 @@ export class LocalRepository implements Repository {
 
   deleteDaySchedule(localDate: LocalDate): Promise<void> {
     return this.mutate((d) => { d.daySchedules = d.daySchedules.filter((x) => x.localDate !== localDate); });
+  }
+
+  /** Files are only stored in cloud mode (private bucket); local mode has no file storage. */
+  async uploadPlan(): Promise<TrainingPlan> {
+    throw new RepositoryError('upload_requires_account');
+  }
+
+  async planUrl(): Promise<string> {
+    throw new RepositoryError('upload_requires_account');
+  }
+
+  deletePlan(plan: TrainingPlan): Promise<void> {
+    return this.mutate((d) => { d.trainingPlans = d.trainingPlans.filter((x) => x.id !== plan.id); });
   }
 
   async deleteAllData(): Promise<void> {

@@ -116,6 +116,14 @@ export default function Today() {
         </Card>
       )}
 
+      {isToday && data.profile.startPreference === 'existing_plan' && data.trainingPlans.length === 0 && store.repoKind === 'supabase' && (
+        <Card testID="plan-card" style={{ marginTop: space.md }}>
+          <Text style={font.h3}>{t('plans.cardTitle')}</Text>
+          <Muted style={{ marginTop: 4, marginBottom: space.md }}>{t('plans.cardText')}</Muted>
+          <Button compact kind="secondary" icon="document-attach-outline" title={t('plans.title')} onPress={() => router.push('/plans')} />
+        </Card>
+      )}
+
       {cycle && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md }}>
           <Badge tone="accent" label={t('cycles.current', { phase: t(`cycles.phases.${cycle.phase}`) })} />
@@ -124,7 +132,7 @@ export default function Today() {
       )}
       {restDay && <Muted style={{ marginTop: space.sm, color: colors.success }}>{t('readiness.restDay')}</Muted>}
 
-      {features.checkin && isToday && (openTraining.length > 0 || checkin) && (
+      {features.checkin && isToday && (
         <CheckinCard day={day} assessment={assessment} hasCheckin={!!checkin} openTraining={openTraining} />
       )}
 

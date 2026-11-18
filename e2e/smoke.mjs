@@ -184,6 +184,14 @@ try {
   await id('more-level-regular').waitFor();
   await id('health-consent').waitFor();
   await shot('07-more');
+  await id('more-checkin').click();                      // check-in reachable from settings at any time
+  await page.getByText('Fit und belastbar').waitFor();
+  await page.goBack();
+  await id('open-plans').click();                        // plan upload page (cloud only – local mode says so)
+  await id('plans-local').waitFor();
+  await page.getByText('Automatisches Auslesen').waitFor();
+  await page.goBack();
+  step('check-in from settings, plan upload page');
   await id('withdraw-consent').click();                  // confirm dialog auto-accepted
   await page.getByText('Keine Einwilligung').waitFor();
   step('withdraw health consent deletes check-ins');

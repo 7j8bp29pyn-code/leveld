@@ -92,6 +92,12 @@ export default function More() {
         </View>
       )}
 
+      <SectionTitle>{t('plans.title')}</SectionTitle>
+      <Card testID="open-plans" onPress={() => router.push('/plans')}>
+        <Text style={font.body}>{t('plans.title')} ({store.data.trainingPlans.length})</Text>
+        <Muted>{t('plans.limit')}</Muted>
+      </Card>
+
       <SectionTitle>{t('rhythm.title')}</SectionTitle>
       <Card onPress={() => router.push('/rhythm')} testID="open-rhythm">
         <Text style={font.body}>{t(`rhythm.${profile.dayRhythm}`)}</Text>
@@ -102,7 +108,9 @@ export default function More() {
       <Card>
         {profile.features.checkin && profile.healthConsentAt ? (
           <>
-            <Muted testID="health-consent">{t('health.consentGiven', { date: profile.healthConsentAt.slice(0, 10) })}</Muted>
+            <Button testID="more-checkin" compact title={store.data.checkins.some((c) => c.localDate === store.today) ? t('health.checkinDone') : t('health.checkinNow')}
+              onPress={() => router.push({ pathname: '/checkin', params: { date: store.today } })} />
+            <Muted testID="health-consent" style={{ marginTop: space.md }}>{t('health.consentGiven', { date: profile.healthConsentAt.slice(0, 10) })}</Muted>
             <View style={{ marginTop: space.md }}>
               <Button testID="withdraw-consent" kind="danger" compact title={t('health.withdraw')}
                 onPress={async () => { if (await confirm(t('health.withdrawConfirm'))) await store.withdrawHealthConsent(); }} />

@@ -278,3 +278,25 @@ export function normalizeProfile(p: Partial<Profile> | null | undefined): Profil
 export function normalizeHabit<T extends Partial<Habit>>(h: T): T & Pick<Habit, 'kind' | 'reminderAnchor' | 'reminderOffsetMin' | 'pausePeriods'> {
   return { ...h, kind: h.kind ?? 'habit', reminderAnchor: h.reminderAnchor ?? null, reminderOffsetMin: h.reminderOffsetMin ?? 0, pausePeriods: h.pausePeriods ?? [] };
 }
+
+export const PLAN_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/heic', 'image/webp'] as const;
+export type PlanMimeType = (typeof PLAN_MIME_TYPES)[number];
+export const PLAN_MAX_BYTES = 10 * 1024 * 1024;
+
+/** Uploaded existing training plan (photo / PDF), stored privately. */
+export interface TrainingPlan {
+  id: string;
+  title: string;
+  storagePath: string;
+  mimeType: PlanMimeType;
+  sizeBytes: number;
+  note: string;
+  createdAt: string;
+}
+
+export interface PlanUploadInput {
+  title: string;
+  fileName: string;
+  mimeType: string;
+  bytes: ArrayBuffer;
+}

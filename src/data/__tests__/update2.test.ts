@@ -100,3 +100,26 @@ describe('check-ins, cycles, schedules', () => {
     expect((await repo.load('2026-01-01')).daySchedules).toHaveLength(1);
   });
 });
+
+describe('training plan uploads', () => {
+  const { validatePlanUpload, planMimeType, planStoragePath } = jest.requireActual('../../domain/entries') as typeof import('../../domain/entries');
+
+  it('accepts PDFs and images, rejects other files, empty files and > 10 MB', () => {
+    expect(validatePlanUpload({ title: '', fileName: 'Mein Plan.pdf', mimeType: 'application/pdf', size: 2000 })).toEqual({ title: 'Mein Plan', mimeType: 'application/pdf' });
+    expect(planMimeType('image/jpg', 'x')).toBe('image/jpeg');
+    expect(planMimeType('', 'IMG_1.HEIC')).toBe('image/heic');
+    expect(() => validatePlanUpload({ title: '', fileName: 'virus.exe', mimeType: 'application/x-msdownload', size: 10 })).toThrow('unsupported_file');
+    expect(() => validatePlanUpload({ title: '', fileName: 'a.pdf', mimeType: 'application/pdf', size: 0 })).toThrow('empty_file');
+    expect(() => validatePlanUpload({ title: '', fileName: 'a.pdf', mimeType: 'application/pdf', size: 11 * 1024 * 1024 })).toThrow('file_too_large');
+  });
+
+  it('stores files under the user folder with a generated name (no original file name in the path)', () => {
+    expect(planStoragePath('u1', 'abc', 'image/jpeg')).toBe('u1/abc.jpg');
+  });
+
+  it('local mode has no file storage and says so', async () => {
+    const { repo } = await setup(V1);
+    await expect(repo.uploadPlan()).rejects.toThrow('upload_requires_account');
+    expect((await repo.load('2026-01-01')).trainingPlans).toEqual([]);
+  });
+});

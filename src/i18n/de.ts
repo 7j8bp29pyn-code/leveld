@@ -8,6 +8,7 @@ const de = {
     noData: 'Keine Daten', today: 'Heute', yesterday: 'Gestern', tomorrow: 'Morgen',
   },
   errors: {
+    upload_requires_account: 'Hochladen ist nur mit Konto möglich.', unsupported_file: 'Nur PDF oder Bild (JPG, PNG, HEIC) möglich.', empty_file: 'Die Datei ist leer.', file_too_large: 'Die Datei ist größer als 10 MB.',
     invalid_rpe: 'RPE von 1 bis 10', out_of_range: 'Wert außerhalb des gültigen Bereichs', end_before_start: 'Ende liegt vor dem Start', cycle_not_found: 'Block nicht gefunden',
     required: 'Pflichtfeld', too_long: 'Zu lang', invalid_number: 'Bitte eine Zahl eingeben',
     invalid_time: 'Uhrzeit im Format HH:MM', invalid_rating: 'Wert von 1 bis 5', negative: 'Darf nicht negativ sein',
@@ -120,7 +121,7 @@ const de = {
       endurance: 'Ausdauer verbessern', mobility: 'Beweglichkeit verbessern', sleep: 'Schlaf verbessern', stress: 'Stress reduzieren' },
     customGoal: 'Individuelles Ziel',
     startTitle: 'Wie möchtest du starten?',
-    existing_plan: 'Ich habe bereits einen Trainingsplan.', existing_planText: 'Du trägst deine Einheiten ein. Foto-/PDF-Import folgt (in Entwicklung).',
+    existing_plan: 'Ich habe bereits einen Trainingsplan.', existing_planText: 'Lade deinen Plan als Foto oder PDF hoch (Gewohnheiten → Trainingspläne). Automatisches Auslesen folgt.',
     generate_plan: 'Ich möchte einen Plan erstellen lassen.', generate_planText: 'Fachlich geprüfte Basisvorlagen sind in Vorbereitung. Bis dahin legen wir eine Trainingsgewohnheit an deinen Tagen an.',
     habits_only: 'Ich möchte zunächst nur Gewohnheiten aufbauen.', habits_onlyText: 'Training kannst du später jederzeit ergänzen.',
     detailsTitle: 'Ein paar Details zum Training', detailsHint: 'Alles optional – du kannst es überspringen.',
@@ -193,7 +194,9 @@ const de = {
     offset: 'Abstand (Minuten)', sleepWarning: 'Diese Uhrzeit liegt in deiner Schlafenszeit – die Erinnerung wird dann übersprungen.' },
   features: { title: 'Funktionen', hint: 'Unabhängig von deinem Level ein- und ausschaltbar.',
     detailedLogging: 'Detaillierte Trainingserfassung (Übungen, Sätze, Gewichte)', rpe: 'Subjektive Anstrengung (RPE 1–10)', cycles: 'Trainingszyklen', checkin: 'Gesundheits-Check-in' },
-  health: { title: 'Gesundheitsdaten', consentGiven: 'Einwilligung erteilt am {{date}}.', none: 'Keine Einwilligung – es werden keine Gesundheitsangaben gespeichert.',
+  health: {
+    checkinNow: 'Check-in für heute', checkinDone: 'Heute schon eingecheckt – ändern',
+    title: 'Gesundheitsdaten', consentGiven: 'Einwilligung erteilt am {{date}}.', none: 'Keine Einwilligung – es werden keine Gesundheitsangaben gespeichert.',
     withdraw: 'Einwilligung widerrufen & Check-ins löschen', withdrawConfirm: 'Gesundheits-Check-in ausschalten und alle gespeicherten Check-ins endgültig löschen?' },
   motivation: {
     supportive: { done: 'Schön gemacht – {{name}} ist erledigt.', adapted: 'Gut angepasst. Auch eine leichtere Einheit bringt dich weiter.',
@@ -204,6 +207,15 @@ const de = {
       health_pause: 'Kranksein ist kein Trainingsreiz. Ab ins Bett.', comeback: 'Da ist ja jemand! Willkommen zurück.' },
     factual: { done: '{{name}}: erledigt.', adapted: 'Einheit angepasst durchgeführt.', recovery: 'Regeneration dokumentiert.',
       rest_day: 'Geplanter Ruhetag umgesetzt.', health_pause: 'Training aus gesundheitlichen Gründen ausgesetzt.', comeback: 'Wiedereinstieg dokumentiert.' },
+  },
+  plans: {
+    title: 'Trainingspläne', hint: 'Lade deinen bestehenden Plan als Foto oder PDF hoch. Die Datei wird privat in deinem Konto gespeichert – nur du kannst sie sehen.',
+    photo: 'Foto aufnehmen', library: 'Aus Fotos wählen', pdf: 'PDF auswählen', name: 'Titel (optional)', namePlaceholder: 'z. B. Push/Pull/Legs',
+    empty: 'Noch kein Plan hochgeladen.', open: 'Öffnen', uploading: 'Wird hochgeladen …', uploaded: 'Plan gespeichert.',
+    aiSoon: 'Automatisches Auslesen von Übungen, Sätzen und Gewichten folgt (KI, in Entwicklung). Bis dahin trägst du die Übungen selbst in deine Trainingsgewohnheit ein.',
+    localOnly: 'Das Hochladen ist nur mit Konto (Cloud-Modus) verfügbar.', limit: 'PDF, JPG, PNG oder HEIC · max. 10 MB',
+    cardTitle: 'Deinen Trainingsplan hochladen', cardText: 'Du hast angegeben, dass du schon einen Plan hast. Lade ihn als Foto oder PDF hoch, damit du ihn immer dabei hast.',
+    deleteConfirm: '„{{name}}“ endgültig löschen?', cameraDenied: 'Kein Kamerazugriff erlaubt.',
   },
   more: {
     title: 'Mehr', profile: 'Profil', name: 'Name', mode: 'Modus', guided: 'Geführt', custom: 'Eigener Plan',

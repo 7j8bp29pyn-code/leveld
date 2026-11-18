@@ -29,7 +29,10 @@ export default function Habits() {
     <Screen>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={font.h1}>{t('tabs.habits')}</Text>
-        <Button testID="new-habit" compact icon="add" title={t('common.add')} onPress={() => router.push('/habit')} />
+        <View style={{ flexDirection: 'row', gap: space.sm }}>
+          <Button testID="habits-plans" compact kind="secondary" icon="document-attach-outline" title={t('plans.title')} onPress={() => router.push('/plans')} />
+          <Button testID="new-habit" compact icon="add" title={t('common.add')} onPress={() => router.push('/habit')} />
+        </View>
       </View>
       {data.profile.mode === 'guided' && <Muted style={{ marginTop: space.sm }}>{t('habit.guidedHint')}</Muted>}
 

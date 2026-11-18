@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildEntry, validateCheckin, validateCycle, validateDaySchedule, validateHabitName } from '../domain/entries';
+import { buildEntry, planStoragePath, validateCheckin, validateCycle, validateDaySchedule, validateHabitName, validatePlanUpload } from '../domain/entries';
 import { DEFAULT_PROFILE, normalizeProfile } from '../domain/types';
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
-  HabitInput, LocalDate, PhaseChange, Profile, TrainingCycle,
+  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, TrainingCycle, TrainingPlan,
 } from '../domain/types';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
@@ -76,6 +76,10 @@ export const mapCycle = (r: Row): TrainingCycle => ({
   id: r.id, name: r.name, goal: r.goal, phase: r.phase, startDate: r.start_date, endDate: r.end_date, sessionsPerWeek: r.sessions_per_week,
   restWeekdays: r.rest_weekdays ?? [], notes: r.notes, confirmedBy: r.confirmed_by, createdAt: r.created_at, updatedAt: r.updated_at,
 });
+export const PLAN_BUCKET = 'training-plans';
+export const mapPlan = (r: Row): TrainingPlan => ({
+  id: r.id, title: r.title, storagePath: r.storage_path, mimeType: r.mime_type, sizeBytes: r.size_bytes, note: r.note, createdAt: r.created_at,
+});
 export const mapDaySchedule = (r: Row): DaySchedule => ({
   id: r.id, localDate: r.local_date, shift: r.shift, anchors: r.anchors, createdAt: r.created_at, updatedAt: r.updated_at,
 });
@@ -111,7 +115,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async load(sinceDate: LocalDate): Promise<Snapshot> {
-    const [p, h, f, e, c, ci, cy, ds] = await Promise.all([
+    const [p, h, f, e, c, ci, cy, ds, tp] = await Promise.all([
       this.db.from('profiles').select('*').maybeSingle(),
       this.db.from('habits').select('*').order('sort_order'),
       this.db.from('field_definitions').select('*').order('sort_order'),
@@ -120,6 +124,7 @@ export class SupabaseRepository implements Repository {
       this.db.from('daily_checkins').select('*').gte('local_date', sinceDate),
       this.db.from('training_cycles').select('*').order('start_date'),
       this.db.from('day_schedules').select('*').gte('local_date', sinceDate),
+      this.db.from('training_plans').select('*').order('created_at', { ascending: false }),
     ]);
     const profileRowData = checkMaybe(p);
     return {
@@ -131,6 +136,8 @@ export class SupabaseRepository implements Repository {
       checkins: check(ci).map(mapCheckin),
       cycles: check(cy).map(mapCycle),
       daySchedules: check(ds).map(mapDaySchedule),
+      // optional module: if migration 3 is missing the app still loads (uploads then report an error)
+      trainingPlans: tp.error ? [] : (tp.data ?? []).map(mapPlan),
     };
   }
 
@@ -272,7 +279,39 @@ export class SupabaseRepository implements Repository {
     checkMaybe(await this.db.from('day_schedules').delete().eq('local_date', localDate));
   }
 
+  async uploadPlan(input: PlanUploadInput): Promise<TrainingPlan> {
+    const user_id = await this.userId();
+    const v = validatePlanUpload({ title: input.title, fileName: input.fileName, mimeType: input.mimeType, size: input.bytes.byteLength });
+    const id = this.newId();
+    const path = planStoragePath(user_id, id, v.mimeType);
+    const up = await this.db.storage.from(PLAN_BUCKET).upload(path, input.bytes, { contentType: v.mimeType, upsert: false });
+    if (up.error) throw new RepositoryError(up.error.message, up.error);
+    const res = await this.db.from('training_plans')
+      .insert({ id, user_id, title: v.title, storage_path: path, mime_type: v.mimeType, size_bytes: input.bytes.byteLength }).select().single();
+    if (res.error) {
+      await this.db.storage.from(PLAN_BUCKET).remove([path]); // compensate – no orphaned file
+      throw new RepositoryError(res.error.message, res.error);
+    }
+    return mapPlan(res.data);
+  }
+
+  async planUrl(plan: TrainingPlan): Promise<string> {
+    const { data, error } = await this.db.storage.from(PLAN_BUCKET).createSignedUrl(plan.storagePath, 300);
+    if (error || !data) throw new RepositoryError(error?.message ?? 'not_found', error);
+    return data.signedUrl;
+  }
+
+  async deletePlan(plan: TrainingPlan) {
+    const rm = await this.db.storage.from(PLAN_BUCKET).remove([plan.storagePath]);
+    if (rm.error) throw new RepositoryError(rm.error.message, rm.error);
+    checkMaybe(await this.db.from('training_plans').delete().eq('id', plan.id));
+  }
+
   async deleteAllData() {
+    // files are not covered by the database cascade → delete them first
+    const user_id = await this.userId();
+    const list = await this.db.storage.from(PLAN_BUCKET).list(user_id, { limit: 1000 });
+    if (list.data?.length) await this.db.storage.from(PLAN_BUCKET).remove(list.data.map((f) => `${user_id}/${f.name}`));
     const res = await this.db.rpc('delete_my_account');
     if (res.error) throw new RepositoryError(res.error.message, res.error);
     await this.db.auth.signOut();

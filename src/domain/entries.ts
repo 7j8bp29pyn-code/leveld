@@ -1,6 +1,6 @@
 import { isLocalDate, isTimeOfDay, compareDates } from './dates';
 import {
-  FULFILLED, type CheckinInput, type CycleInput, type DayScheduleInput, type EntryInput, type FieldDefinition, type FieldValue, type Habit, type HabitEntry,
+  FULFILLED, PLAN_MAX_BYTES, PLAN_MIME_TYPES, type PlanMimeType, type CheckinInput, type CycleInput, type DayScheduleInput, type EntryInput, type FieldDefinition, type FieldValue, type Habit, type HabitEntry,
 } from './types';
 
 export class ValidationError extends Error {
@@ -139,4 +139,28 @@ export function validateDaySchedule(s: DayScheduleInput): DayScheduleInput {
   for (const k of ['wake', 'firstMeal', 'bedtime'] as const) if (!isTimeOfDay(s.anchors[k])) throw new ValidationError(k, 'invalid_time');
   if (s.anchors.workEnd !== null && !isTimeOfDay(s.anchors.workEnd)) throw new ValidationError('workEnd', 'invalid_time');
   return s;
+}
+
+/** Normalises a picked file's MIME type (pickers sometimes report none or "image/jpg"). */
+export function planMimeType(mime: string | null | undefined, fileName: string): PlanMimeType | null {
+  const m = (mime ?? '').toLowerCase().replace('image/jpg', 'image/jpeg');
+  if ((PLAN_MIME_TYPES as readonly string[]).includes(m)) return m as PlanMimeType;
+  const ext = fileName.toLowerCase().split('.').pop();
+  const byExt: Record<string, PlanMimeType> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', webp: 'image/webp' };
+  return (ext && byExt[ext]) || null;
+}
+
+export function validatePlanUpload(p: { title: string; fileName: string; mimeType: string; size: number }): { title: string; mimeType: PlanMimeType } {
+  const mimeType = planMimeType(p.mimeType, p.fileName);
+  if (!mimeType) throw new ValidationError('file', 'unsupported_file');
+  if (p.size <= 0) throw new ValidationError('file', 'empty_file');
+  if (p.size > PLAN_MAX_BYTES) throw new ValidationError('file', 'file_too_large');
+  const title = (p.title.trim() || p.fileName.replace(/\.[^.]+$/, '')).slice(0, 120) || 'Trainingsplan';
+  return { title, mimeType };
+}
+
+/** "<userId>/<id>.<ext>" – never uses the original file name (no path tricks, no personal data in paths). */
+export function planStoragePath(userId: string, id: string, mime: PlanMimeType): string {
+  const ext = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'image/webp': 'webp' }[mime];
+  return `${userId}/${id}.${ext}`;
 }

@@ -11,7 +11,7 @@ import { ValidationError } from '../domain/entries';
 import { DISMISS_DAYS } from '../domain/phases';
 import { DEFAULT_PROFILE } from '../domain/types';
 import type {
-  CheckinInput, CycleInput, DayScheduleInput, EntryInput, FieldInput, HabitEntry, HabitInput, LocalDate, Phase, Profile,
+  CheckinInput, CycleInput, DayScheduleInput, EntryInput, FieldInput, HabitEntry, HabitInput, LocalDate, Phase, PlanUploadInput, Profile, TrainingPlan,
 } from '../domain/types';
 import i18n from '../i18n';
 import { newId } from '../services/ids';
@@ -62,13 +62,16 @@ interface Store {
   deleteCycle(id: string): Promise<boolean>;
   saveDaySchedule(input: DayScheduleInput): Promise<boolean>;
   deleteDaySchedule(date: LocalDate): Promise<boolean>;
+  uploadPlan(input: PlanUploadInput): Promise<boolean>;
+  openPlanUrl(plan: TrainingPlan): Promise<string | null>;
+  deletePlan(plan: TrainingPlan): Promise<boolean>;
 }
 
 const Ctx = createContext<Store | null>(null);
 
 const emptySnapshot = (): Snapshot => ({
   profile: { ...DEFAULT_PROFILE },
-  habits: [], fields: [], entries: [], phaseChanges: [], checkins: [], cycles: [], daySchedules: [],
+  habits: [], fields: [], entries: [], phaseChanges: [], checkins: [], cycles: [], daySchedules: [], trainingPlans: [],
 });
 
 export function errorMessage(e: unknown): string {
@@ -342,6 +345,22 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
       const saved = await run((r) => r.upsertDaySchedule(input));
       if (saved) setData((d) => ({ ...d, daySchedules: [...d.daySchedules.filter((x) => x.localDate !== saved.localDate), saved] }));
       return !!saved;
+    },
+
+    async uploadPlan(input) {
+      const saved = await run((r) => r.uploadPlan(input));
+      if (saved) setData((d) => ({ ...d, trainingPlans: [saved, ...d.trainingPlans] }));
+      return !!saved;
+    },
+
+    async openPlanUrl(plan) {
+      return (await run((r) => r.planUrl(plan))) ?? null;
+    },
+
+    async deletePlan(plan) {
+      const ok = await run((r) => r.deletePlan(plan).then(() => true));
+      if (ok) setData((d) => ({ ...d, trainingPlans: d.trainingPlans.filter((x) => x.id !== plan.id) }));
+      return !!ok;
     },
 
     async deleteDaySchedule(date) {

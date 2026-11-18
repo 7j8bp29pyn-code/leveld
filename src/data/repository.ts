@@ -1,6 +1,6 @@
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
-  HabitInput, LocalDate, PhaseChange, Profile, TrainingCycle,
+  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, TrainingCycle, TrainingPlan,
 } from '../domain/types';
 
 export interface Snapshot {
@@ -13,6 +13,7 @@ export interface Snapshot {
   checkins: DailyCheckin[];
   cycles: TrainingCycle[];
   daySchedules: DaySchedule[];
+  trainingPlans: TrainingPlan[];
 }
 
 /**
@@ -42,6 +43,11 @@ export interface Repository {
   deleteCycle(id: string): Promise<void>;
   upsertDaySchedule(input: DayScheduleInput): Promise<DaySchedule>;
   deleteDaySchedule(localDate: LocalDate): Promise<void>;
+  /** Uploads a plan file privately (cloud mode only – local mode throws 'upload_requires_account'). */
+  uploadPlan(input: PlanUploadInput): Promise<TrainingPlan>;
+  /** Short-lived signed URL to view the file. */
+  planUrl(plan: TrainingPlan): Promise<string>;
+  deletePlan(plan: TrainingPlan): Promise<void>;
   /** GDPR: deletes all data of the current user (and the account for Supabase). */
   deleteAllData(): Promise<void>;
   /** Machine-readable export of all stored data (JSON). */
