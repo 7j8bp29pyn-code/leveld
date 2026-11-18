@@ -56,7 +56,7 @@ const Ctx = createContext<Store | null>(null);
 
 const emptySnapshot = (): Snapshot => ({
   profile: { ...DEFAULT_PROFILE },
-  habits: [], fields: [], entries: [], phaseChanges: [],
+  habits: [], fields: [], entries: [], phaseChanges: [], checkins: [], cycles: [], daySchedules: [],
 });
 
 export function errorMessage(e: unknown): string {
@@ -218,7 +218,7 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
       const now = new Date().toISOString();
       const optimistic: HabitEntry = {
         id: existing?.id ?? `tmp-${habitId}-${date}`, habitId, localDate: date, status: 'done', postponedTo: null, values: {}, fieldSnapshot: [],
-        habitNameSnapshot: habit.name, note: '', completedAt: now, createdAt: now, updatedAt: now,
+        habitNameSnapshot: habit.name, note: '', rpe: null, completedAt: now, createdAt: now, updatedAt: now,
       };
       setData((d) => ({ ...d, entries: replaceEntry(d.entries, habitId, date, optimistic) }));
       const saved = await run((r) => r.upsertEntry({ habitId, localDate: date, status: 'done' }));

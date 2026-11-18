@@ -1,5 +1,5 @@
 import { addDays, compareDates, eachDay, isoWeekday, startOfIsoWeek } from './dates';
-import type { FieldDefinition, Habit, HabitEntry, LocalDate } from './types';
+import { FULFILLED, type FieldDefinition, type Habit, type HabitEntry, type LocalDate } from './types';
 
 export function isPausedOn(habit: Habit, d: LocalDate): boolean {
   return habit.pausePeriods.some((p) => d >= p.start && (p.end === null || d <= p.end));
@@ -51,7 +51,8 @@ export function weeklyProgress(habit: Habit, d: LocalDate, idx: EntryIndex): Wee
   const start = startOfIsoWeek(d);
   let done = 0;
   for (const day of eachDay(start, addDays(start, 6))) {
-    if (idx.get(entryKey(habit.id, day))?.status === 'done') done++;
+    const st = idx.get(entryKey(habit.id, day))?.status;
+    if (st && FULFILLED.includes(st)) done++;
   }
   return { target: habit.timesPerWeek ?? 1, done };
 }
@@ -90,7 +91,7 @@ export function itemsForDay(habits: Habit[], entries: HabitEntry[], d: LocalDate
       }
     } else if (from.length && habit.status !== 'paused') {
       items.push({ habit, kind: 'postponed_in', entry, postponedFrom: from, weekly: null });
-    } else if (entry && entry.status === 'done') {
+    } else if (entry && FULFILLED.includes(entry.status)) {
       // done on an unplanned day (extra session) – still show it so it can be corrected
       items.push({ habit, kind: 'postponed_in', entry, postponedFrom: [], weekly: null });
     }

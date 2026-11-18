@@ -1,5 +1,7 @@
 import { isLocalDate, isTimeOfDay, compareDates } from './dates';
-import type { EntryInput, FieldDefinition, FieldValue, Habit, HabitEntry } from './types';
+import {
+  FULFILLED, type CheckinInput, type CycleInput, type DayScheduleInput, type EntryInput, type FieldDefinition, type FieldValue, type Habit, type HabitEntry,
+} from './types';
 
 export class ValidationError extends Error {
   constructor(public readonly field: string, message: string) {
@@ -67,8 +69,12 @@ export function buildEntry(
     if (v === null) delete values[key];
     else values[key] = v;
   }
-  // only keep values for done entries (skip/pause/postpone carry no measurements)
-  const finalValues = input.status === 'done' ? values : {};
+  // only done/adapted sessions carry measurements (skip/pause/postpone/recovery/health_pause don't)
+  const measured = input.status === 'done' || input.status === 'adapted';
+  const finalValues = measured ? values : {};
+  let rpe: number | null = input.rpe === undefined ? existing?.rpe ?? null : input.rpe;
+  if (rpe !== null && (!Number.isInteger(rpe) || rpe < 1 || rpe > 10)) throw new ValidationError('rpe', 'invalid_rpe');
+  if (!measured) rpe = null;
   const usedKeys = Object.keys(finalValues);
   const now = ids.now();
   return {
@@ -81,7 +87,8 @@ export function buildEntry(
     fieldSnapshot: defs.filter((d) => usedKeys.includes(d.key)).map((d) => ({ key: d.key, label: d.label, type: d.type, unit: d.unit })),
     habitNameSnapshot: habit.name,
     note: (input.note ?? existing?.note ?? '').slice(0, 2000),
-    completedAt: input.status === 'done' ? existing?.completedAt ?? now : null,
+    rpe,
+    completedAt: FULFILLED.includes(input.status) ? existing?.completedAt ?? now : null,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -92,4 +99,44 @@ export function validateHabitName(name: string): string {
   if (!n) throw new ValidationError('name', 'required');
   if (n.length > 80) throw new ValidationError('name', 'too_long');
   return n;
+}
+
+const SYMPTOMS = ['sore_throat', 'fever', 'cough', 'other_symptoms', 'pain_injury'];
+const RED_FLAGS = ['chest_pain', 'breathlessness', 'circulation'];
+const inRange = (v: number | null, min: number, max: number, field: string, step = 1) => {
+  if (v === null) return null;
+  if (!Number.isFinite(v) || v < min || v > max || (step === 1 && !Number.isInteger(v))) throw new ValidationError(field, 'out_of_range');
+  return v;
+};
+
+/** Validates a daily check-in. Optional values stay null (missing ≠ 0). */
+export function validateCheckin(c: CheckinInput): CheckinInput {
+  if (!isLocalDate(c.localDate)) throw new ValidationError('localDate', 'invalid_date');
+  if (!['fit', 'tired', 'exhausted', 'sick'].includes(c.readiness)) throw new ValidationError('readiness', 'required');
+  return {
+    ...c,
+    sleepHours: inRange(c.sleepHours, 0, 24, 'sleepHours', 0.1),
+    sleepQuality: inRange(c.sleepQuality, 1, 5, 'sleepQuality'),
+    stress: inRange(c.stress, 1, 5, 'stress'),
+    soreness: inRange(c.soreness, 0, 3, 'soreness'),
+    symptoms: [...new Set(c.symptoms)].filter((s) => SYMPTOMS.includes(s)),
+    redFlags: [...new Set(c.redFlags)].filter((s) => RED_FLAGS.includes(s)),
+    note: c.note.slice(0, 2000),
+  };
+}
+
+export function validateCycle(c: CycleInput): CycleInput {
+  const name = c.name.trim();
+  if (!name) throw new ValidationError('name', 'required');
+  if (!isLocalDate(c.startDate)) throw new ValidationError('startDate', 'invalid_date');
+  if (!isLocalDate(c.endDate)) throw new ValidationError('endDate', 'invalid_date');
+  if (compareDates(c.endDate, c.startDate) < 0) throw new ValidationError('endDate', 'end_before_start');
+  return { ...c, name: name.slice(0, 80), sessionsPerWeek: inRange(c.sessionsPerWeek, 0, 14, 'sessionsPerWeek') };
+}
+
+export function validateDaySchedule(s: DayScheduleInput): DayScheduleInput {
+  if (!isLocalDate(s.localDate)) throw new ValidationError('localDate', 'invalid_date');
+  for (const k of ['wake', 'firstMeal', 'bedtime'] as const) if (!isTimeOfDay(s.anchors[k])) throw new ValidationError(k, 'invalid_time');
+  if (s.anchors.workEnd !== null && !isTimeOfDay(s.anchors.workEnd)) throw new ValidationError('workEnd', 'invalid_time');
+  return s;
 }

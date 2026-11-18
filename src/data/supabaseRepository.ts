@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildEntry, validateHabitName } from '../domain/entries';
-import { DEFAULT_PROFILE } from '../domain/types';
+import { buildEntry, validateCheckin, validateCycle, validateDaySchedule, validateHabitName } from '../domain/entries';
+import { DEFAULT_PROFILE, normalizeProfile } from '../domain/types';
 import type {
-  EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry, HabitInput, LocalDate, PhaseChange, Profile,
+  CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
+  HabitInput, LocalDate, PhaseChange, Profile, TrainingCycle,
 } from '../domain/types';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
@@ -11,15 +12,22 @@ type Row = Record<string, any>;
 
 const t = (v: string | null | undefined) => (v ? v.slice(0, 5) : null); // "07:30:00" -> "07:30"
 
-export const mapProfile = (r: Row): Profile => ({
+export const mapProfile = (r: Row): Profile => normalizeProfile({
   displayName: r.display_name, goals: r.goals ?? [], habitBacklog: r.habit_backlog ?? [], mode: r.mode, locale: r.locale, timezone: r.timezone,
   defaultReminderTime: t(r.default_reminder_time), phaseThreshold: Number(r.phase_threshold),
   phaseWindowDays: r.phase_window_days, onboardingCompleted: r.onboarding_completed,
+  trainingLevel: r.training_level ?? null, trainingGoals: r.training_goals ?? [], startPreference: r.start_preference ?? null,
+  trainingDays: r.training_days ?? [], trainingSettings: r.training_settings ?? [], trainingLimitations: r.training_limitations ?? '',
+  communicationStyle: r.communication_style ?? 'supportive', features: r.features ?? undefined, healthConsentAt: r.health_consent_at ?? null,
+  dayRhythm: r.day_rhythm ?? 'standard', anchors: r.day_anchors ?? undefined, dayStartHour: r.day_start_hour ?? DEFAULT_PROFILE.dayStartHour,
 });
 const profileRow = (p: Profile) => ({
   display_name: p.displayName, goals: p.goals, habit_backlog: p.habitBacklog, mode: p.mode, locale: p.locale, timezone: p.timezone,
   default_reminder_time: p.defaultReminderTime, phase_threshold: p.phaseThreshold,
   phase_window_days: p.phaseWindowDays, onboarding_completed: p.onboardingCompleted,
+  training_level: p.trainingLevel, training_goals: p.trainingGoals, start_preference: p.startPreference, training_days: p.trainingDays,
+  training_settings: p.trainingSettings, training_limitations: p.trainingLimitations, communication_style: p.communicationStyle,
+  features: p.features, health_consent_at: p.healthConsentAt, day_rhythm: p.dayRhythm, day_anchors: p.anchors, day_start_hour: p.dayStartHour,
 });
 
 export const mapHabit = (r: Row): Habit => ({
@@ -28,6 +36,7 @@ export const mapHabit = (r: Row): Habit => ({
   reminderTime: t(r.reminder_time), reminderEnabled: r.reminder_enabled, startDate: r.start_date,
   phase: r.phase, status: r.status, pausePeriods: r.pause_periods ?? [], sortOrder: r.sort_order,
   phaseSuggestionDismissedUntil: r.phase_suggestion_dismissed_until, createdAt: r.created_at, updatedAt: r.updated_at,
+  kind: r.kind ?? 'habit', reminderAnchor: r.reminder_anchor ?? null, reminderOffsetMin: r.reminder_offset_min ?? 0,
 });
 const habitRow = (h: Partial<HabitInput>) => {
   const m: Row = {
@@ -36,6 +45,7 @@ const habitRow = (h: Partial<HabitInput>) => {
     reminder_time: h.reminderTime, reminder_enabled: h.reminderEnabled, start_date: h.startDate,
     phase: h.phase, status: h.status, pause_periods: h.pausePeriods, sort_order: h.sortOrder,
     phase_suggestion_dismissed_until: h.phaseSuggestionDismissedUntil,
+    kind: h.kind, reminder_anchor: h.reminderAnchor, reminder_offset_min: h.reminderOffsetMin,
   };
   Object.keys(m).forEach((k) => m[k] === undefined && delete m[k]);
   return m;
@@ -53,7 +63,21 @@ const fieldRow = (f: FieldDefinition, userId: string) => ({
 export const mapEntry = (r: Row): HabitEntry => ({
   id: r.id, habitId: r.habit_id, localDate: r.local_date, status: r.status, postponedTo: r.postponed_to,
   values: r.field_values ?? {}, fieldSnapshot: r.field_snapshot ?? [], habitNameSnapshot: r.habit_name_snapshot,
-  note: r.note, completedAt: r.completed_at, createdAt: r.created_at, updatedAt: r.updated_at,
+  note: r.note, rpe: r.rpe ?? null, completedAt: r.completed_at, createdAt: r.created_at, updatedAt: r.updated_at,
+});
+
+const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+export const mapCheckin = (r: Row): DailyCheckin => ({
+  id: r.id, localDate: r.local_date, readiness: r.readiness, sleepHours: num(r.sleep_hours), sleepQuality: r.sleep_quality,
+  stress: r.stress, soreness: r.soreness, symptoms: r.symptoms ?? [], redFlags: r.red_flags ?? [], note: r.note,
+  createdAt: r.created_at, updatedAt: r.updated_at,
+});
+export const mapCycle = (r: Row): TrainingCycle => ({
+  id: r.id, name: r.name, goal: r.goal, phase: r.phase, startDate: r.start_date, endDate: r.end_date, sessionsPerWeek: r.sessions_per_week,
+  restWeekdays: r.rest_weekdays ?? [], notes: r.notes, confirmedBy: r.confirmed_by, createdAt: r.created_at, updatedAt: r.updated_at,
+});
+export const mapDaySchedule = (r: Row): DaySchedule => ({
+  id: r.id, localDate: r.local_date, shift: r.shift, anchors: r.anchors, createdAt: r.created_at, updatedAt: r.updated_at,
 });
 
 const mapPhaseChange = (r: Row): PhaseChange => ({
@@ -87,12 +111,15 @@ export class SupabaseRepository implements Repository {
   }
 
   async load(sinceDate: LocalDate): Promise<Snapshot> {
-    const [p, h, f, e, c] = await Promise.all([
+    const [p, h, f, e, c, ci, cy, ds] = await Promise.all([
       this.db.from('profiles').select('*').maybeSingle(),
       this.db.from('habits').select('*').order('sort_order'),
       this.db.from('field_definitions').select('*').order('sort_order'),
       this.db.from('habit_entries').select('*').gte('local_date', sinceDate),
       this.db.from('habit_phase_changes').select('*').order('created_at'),
+      this.db.from('daily_checkins').select('*').gte('local_date', sinceDate),
+      this.db.from('training_cycles').select('*').order('start_date'),
+      this.db.from('day_schedules').select('*').gte('local_date', sinceDate),
     ]);
     const profileRowData = checkMaybe(p);
     return {
@@ -101,6 +128,9 @@ export class SupabaseRepository implements Repository {
       fields: check(f).map(mapField),
       entries: check(e).map(mapEntry),
       phaseChanges: check(c).map(mapPhaseChange),
+      checkins: check(ci).map(mapCheckin),
+      cycles: check(cy).map(mapCycle),
+      daySchedules: check(ds).map(mapDaySchedule),
     };
   }
 
@@ -167,7 +197,7 @@ export class SupabaseRepository implements Repository {
           {
             id: entry.id, user_id, habit_id: entry.habitId, local_date: entry.localDate, status: entry.status,
             postponed_to: entry.postponedTo, field_values: entry.values, field_snapshot: entry.fieldSnapshot,
-            habit_name_snapshot: entry.habitNameSnapshot, note: entry.note, completed_at: entry.completedAt,
+            habit_name_snapshot: entry.habitNameSnapshot, note: entry.note, rpe: entry.rpe, completed_at: entry.completedAt,
           },
           { onConflict: 'habit_id,local_date' },
         )
@@ -189,6 +219,57 @@ export class SupabaseRepository implements Repository {
         .select().single(),
     );
     return mapPhaseChange(row);
+  }
+
+  async upsertCheckin(input: CheckinInput): Promise<DailyCheckin> {
+    const user_id = await this.userId();
+    const c = validateCheckin(input);
+    const row = check(
+      await this.db.from('daily_checkins').upsert({
+        user_id, local_date: c.localDate, readiness: c.readiness, sleep_hours: c.sleepHours, sleep_quality: c.sleepQuality, stress: c.stress,
+        soreness: c.soreness, symptoms: c.symptoms, red_flags: c.redFlags, note: c.note,
+      }, { onConflict: 'user_id,local_date' }).select().single(),
+    );
+    return mapCheckin(row);
+  }
+
+  async deleteCheckin(localDate: LocalDate) {
+    checkMaybe(await this.db.from('daily_checkins').delete().eq('local_date', localDate));
+  }
+
+  async deleteAllCheckins() {
+    const user_id = await this.userId();
+    checkMaybe(await this.db.from('daily_checkins').delete().eq('user_id', user_id));
+  }
+
+  async saveCycle(input: CycleInput, id?: string): Promise<TrainingCycle> {
+    const user_id = await this.userId();
+    const c = validateCycle(input);
+    const row = check(
+      await this.db.from('training_cycles').upsert({
+        id: id ?? this.newId(), user_id, name: c.name, goal: c.goal, phase: c.phase, start_date: c.startDate, end_date: c.endDate,
+        sessions_per_week: c.sessionsPerWeek, rest_weekdays: c.restWeekdays, notes: c.notes, confirmed_by: c.confirmedBy,
+      }).select().single(),
+    );
+    return mapCycle(row);
+  }
+
+  async deleteCycle(id: string) {
+    checkMaybe(await this.db.from('training_cycles').delete().eq('id', id));
+  }
+
+  async upsertDaySchedule(input: DayScheduleInput): Promise<DaySchedule> {
+    const user_id = await this.userId();
+    const s = validateDaySchedule(input);
+    const row = check(
+      await this.db.from('day_schedules').upsert({ user_id, local_date: s.localDate, shift: s.shift, anchors: s.anchors }, { onConflict: 'user_id,local_date' })
+        .select().single(),
+    );
+    return mapDaySchedule(row);
+  }
+
+  async deleteDaySchedule(localDate: LocalDate) {
+    checkMaybe(await this.db.from('day_schedules').delete().eq('local_date', localDate));
   }
 
   async deleteAllData() {

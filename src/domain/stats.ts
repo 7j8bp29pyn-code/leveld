@@ -1,12 +1,13 @@
 import { addDays, compareDates, eachDay, startOfIsoWeek } from './dates';
 import { entryKey, indexEntries, isEligibleOn, isScheduledOn } from './schedule';
-import type { Habit, HabitEntry, LocalDate } from './types';
+import { FULFILLED, type EntryStatus, type Habit, type HabitEntry, type LocalDate } from './types';
 
 /**
  * Completion statistics, computed only from stored raw data.
  *
  * Rules (documented in docs/ARCHITECTURE.md):
- *  - skipped, paused and postponed occurrences are NOT failures → excluded from the rate.
+ *  - done, adapted and recovery count as fulfilled (`done` = their sum, breakdown in adapted/recovery).
+ *  - skipped, paused, postponed and health_pause are NOT failures → excluded from the rate.
  *  - a planned past day without any entry is "undocumented" (shown explicitly) and
  *    counts as not done in the rate.
  *  - today without an entry is "open" and excluded (the day isn't over).
@@ -15,7 +16,11 @@ import type { Habit, HabitEntry, LocalDate } from './types';
  */
 export interface HabitStats {
   planned: number;
+  /** fulfilled = done + adapted + recovery */
   done: number;
+  adapted: number;
+  recovery: number;
+  healthPause: number;
   skipped: number;
   paused: number;
   postponed: number;
@@ -28,8 +33,20 @@ export interface HabitStats {
 }
 
 export const emptyStats = (): HabitStats => ({
-  planned: 0, done: 0, skipped: 0, paused: 0, postponed: 0, undocumented: 0, open: 0, extra: 0, rate: null,
+  planned: 0, done: 0, adapted: 0, recovery: 0, healthPause: 0, skipped: 0, paused: 0, postponed: 0, undocumented: 0, open: 0, extra: 0, rate: null,
 });
+
+const isFulfilled = (st: EntryStatus | undefined) => !!st && FULFILLED.includes(st);
+
+/** Adds one documented occurrence to the counters. */
+function count(s: HabitStats, st: EntryStatus) {
+  if (isFulfilled(st)) {
+    s.done++;
+    if (st === 'adapted') s.adapted++;
+    if (st === 'recovery') s.recovery++;
+  } else if (st === 'health_pause') s.healthPause++;
+  else if (st === 'skipped' || st === 'paused' || st === 'postponed') s[st]++;
+}
 
 function finalize(s: HabitStats): HabitStats {
   const denom = s.done + s.undocumented;
@@ -56,7 +73,7 @@ export function habitStats(
     const entry = idx.get(entryKey(habit.id, d));
     const planned = isScheduledOn(habit, d) || (postponedTargets.has(d) && isEligibleOn(habit, d));
     if (!planned) {
-      if (entry?.status === 'done') s.extra++;
+      if (isFulfilled(entry?.status)) s.extra++;
       continue;
     }
     s.planned++;
@@ -65,7 +82,7 @@ export function habitStats(
       else s.undocumented++;
       continue;
     }
-    s[entry.status]++;
+    count(s, entry.status);
   }
   return finalize(s);
 }
@@ -83,8 +100,11 @@ function weeklyStats(habit: Habit, idx: Map<string, HabitEntry>, start: LocalDat
     for (const d of days) {
       const e = idx.get(entryKey(habit.id, d));
       if (!e) continue;
-      if (e.status === 'done') done++;
-      else s[e.status]++;
+      if (isFulfilled(e.status)) {
+        done++;
+        if (e.status === 'adapted') s.adapted++;
+        if (e.status === 'recovery') s.recovery++;
+      } else count(s, e.status);
     }
     // prorate target for partial weeks (range edges, start date, pauses)
     const weekTarget = Math.min(7, Math.round((target * eligible.length) / 7));
@@ -104,7 +124,7 @@ function weeklyStats(habit: Habit, idx: Map<string, HabitEntry>, start: LocalDat
 export function combineStats(list: HabitStats[]): HabitStats {
   const s = emptyStats();
   for (const x of list) {
-    s.planned += x.planned; s.done += x.done; s.skipped += x.skipped; s.paused += x.paused;
+    s.planned += x.planned; s.done += x.done; s.adapted += x.adapted; s.recovery += x.recovery; s.healthPause += x.healthPause; s.skipped += x.skipped; s.paused += x.paused;
     s.postponed += x.postponed; s.undocumented += x.undocumented; s.open += x.open; s.extra += x.extra;
   }
   return finalize(s);
@@ -124,7 +144,7 @@ export function currentStreak(habit: Habit, entries: HabitEntry[], today: LocalD
       if (i === 0) continue; // today still open
       break;
     }
-    if (e.status === 'done') streak++;
+    if (isFulfilled(e.status)) streak++; // skipped / paused / health_pause never break a streak
   }
   return streak;
 }
@@ -139,7 +159,7 @@ export interface DayPoint {
 export function dailySeries(habits: Habit[], entries: HabitEntry[], start: LocalDate, end: LocalDate, today: LocalDate): DayPoint[] {
   return eachDay(start, end).map((d) => {
     const st = combineStats(habits.filter((h) => h.scheduleType !== 'times_per_week').map((h) => habitStats(h, entries, d, d, today)));
-    const doneAll = entries.filter((e) => e.localDate === d && e.status === 'done' && habits.some((h) => h.id === e.habitId)).length;
+    const doneAll = entries.filter((e) => e.localDate === d && isFulfilled(e.status) && habits.some((h) => h.id === e.habitId)).length;
     return { date: d, done: doneAll, rate: st.rate };
   });
 }

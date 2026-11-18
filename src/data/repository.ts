@@ -1,5 +1,6 @@
 import type {
-  EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry, HabitInput, LocalDate, PhaseChange, Profile,
+  CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
+  HabitInput, LocalDate, PhaseChange, Profile, TrainingCycle,
 } from '../domain/types';
 
 export interface Snapshot {
@@ -8,6 +9,10 @@ export interface Snapshot {
   fields: FieldDefinition[];
   entries: HabitEntry[];
   phaseChanges: PhaseChange[];
+  /** sensitive health data – separate from training level and habit entries */
+  checkins: DailyCheckin[];
+  cycles: TrainingCycle[];
+  daySchedules: DaySchedule[];
 }
 
 /**
@@ -28,6 +33,15 @@ export interface Repository {
   upsertEntry(input: EntryInput): Promise<HabitEntry>;
   deleteEntry(habitId: string, localDate: LocalDate): Promise<void>;
   addPhaseChange(c: Omit<PhaseChange, 'id' | 'createdAt'>): Promise<PhaseChange>;
+  /** One check-in per logical day (upsert). */
+  upsertCheckin(input: CheckinInput): Promise<DailyCheckin>;
+  deleteCheckin(localDate: LocalDate): Promise<void>;
+  /** Deletes ALL stored health check-ins (consent withdrawal). */
+  deleteAllCheckins(): Promise<void>;
+  saveCycle(input: CycleInput, id?: string): Promise<TrainingCycle>;
+  deleteCycle(id: string): Promise<void>;
+  upsertDaySchedule(input: DayScheduleInput): Promise<DaySchedule>;
+  deleteDaySchedule(localDate: LocalDate): Promise<void>;
   /** GDPR: deletes all data of the current user (and the account for Supabase). */
   deleteAllData(): Promise<void>;
   /** Machine-readable export of all stored data (JSON). */

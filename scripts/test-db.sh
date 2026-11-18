@@ -11,5 +11,9 @@ $RUNAS "$PGBIN/initdb" -D "$DIR" -U postgres >/dev/null
 $RUNAS "$PGBIN/pg_ctl" -D "$DIR" -o "-p $PORT -k $DIR -c listen_addresses=''" -w start >/dev/null
 PSQL="psql -h $DIR -p $PORT -U postgres -v ON_ERROR_STOP=1 -q"
 $PSQL -f "$ROOT/supabase/tests/supabase_stub.sql"
-for f in "$ROOT"/supabase/migrations/*.sql; do $PSQL -f "$f"; done
+# migration 1 + its tests (simulates the existing database), then migration 2 twice (idempotency)
+MIGS=("$ROOT"/supabase/migrations/*.sql)
+$PSQL -f "${MIGS[0]}"
 $PSQL -f "$ROOT/supabase/tests/rls_test.sql"
+for f in "${MIGS[@]:1}"; do $PSQL -f "$f"; $PSQL -f "$f"; done
+$PSQL -f "$ROOT/supabase/tests/rls_test_2.sql"

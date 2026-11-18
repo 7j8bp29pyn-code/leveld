@@ -1,6 +1,9 @@
-import { buildEntry, validateHabitName } from '../domain/entries';
-import { DEFAULT_PROFILE } from '../domain/types';
-import type { EntryInput, FieldInput, Habit, HabitInput, LocalDate, PhaseChange, Profile } from '../domain/types';
+import { buildEntry, validateCheckin, validateCycle, validateDaySchedule, validateHabitName } from '../domain/entries';
+import { DEFAULT_PROFILE, normalizeHabit, normalizeProfile } from '../domain/types';
+import type {
+  CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldInput, Habit, HabitInput, LocalDate, PhaseChange,
+  Profile, TrainingCycle,
+} from '../domain/types';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
 
@@ -13,7 +16,8 @@ export interface KeyValueStore {
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
 const KEY = 'leveld.v1.data';
-const SCHEMA_VERSION = 1;
+/** 2 = levels, check-ins, cycles, day schedules (v1 data is upgraded on read) */
+const SCHEMA_VERSION = 2;
 
 interface Stored extends Snapshot {
   schemaVersion: number;
@@ -38,15 +42,25 @@ export class LocalRepository implements Repository {
     if (this.cache) return this.cache;
     const raw = await this.store.getItem(KEY);
     if (!raw) {
-      this.cache = { schemaVersion: SCHEMA_VERSION, profile: { ...DEFAULT_PROFILE }, habits: [], fields: [], entries: [], phaseChanges: [] };
+      this.cache = {
+        schemaVersion: SCHEMA_VERSION, profile: { ...DEFAULT_PROFILE }, habits: [], fields: [], entries: [], phaseChanges: [],
+        checkins: [], cycles: [], daySchedules: [],
+      };
       return this.cache;
     }
     try {
-      const parsed = JSON.parse(raw) as Stored;
+      const parsed = JSON.parse(raw) as Partial<Stored>;
+      // upgrade data written by older app versions – nothing is lost, new fields get defaults
       this.cache = {
-        ...parsed,
-        profile: { ...DEFAULT_PROFILE, ...parsed.profile },
-        habits: parsed.habits.map((h) => ({ ...h, pausePeriods: h.pausePeriods ?? [] })),
+        schemaVersion: SCHEMA_VERSION,
+        profile: normalizeProfile(parsed.profile),
+        habits: (parsed.habits ?? []).map((h) => normalizeHabit(h)),
+        fields: parsed.fields ?? [],
+        entries: (parsed.entries ?? []).map((e) => ({ ...e, rpe: e.rpe ?? null })),
+        phaseChanges: parsed.phaseChanges ?? [],
+        checkins: parsed.checkins ?? [],
+        cycles: parsed.cycles ?? [],
+        daySchedules: parsed.daySchedules ?? [],
       };
       return this.cache;
     } catch (e) {
@@ -85,7 +99,7 @@ export class LocalRepository implements Repository {
     return this.mutate((d) => {
       const now = this.now();
       const habit: Habit = {
-        ...input,
+        ...normalizeHabit(input),
         name: validateHabitName(input.name),
         pausePeriods: input.pausePeriods ?? [],
         phaseSuggestionDismissedUntil: input.phaseSuggestionDismissedUntil ?? null,
@@ -152,6 +166,59 @@ export class LocalRepository implements Repository {
       d.phaseChanges.push(change);
       return change;
     });
+  }
+
+  upsertCheckin(input: CheckinInput): Promise<DailyCheckin> {
+    return this.mutate((d) => {
+      const v = validateCheckin(input);
+      const i = d.checkins.findIndex((c) => c.localDate === v.localDate);
+      const now = this.now();
+      const next: DailyCheckin = { ...v, id: i >= 0 ? d.checkins[i].id : this.newId(), createdAt: i >= 0 ? d.checkins[i].createdAt : now, updatedAt: now };
+      if (i >= 0) d.checkins[i] = next;
+      else d.checkins.push(next);
+      return clone(next);
+    });
+  }
+
+  deleteCheckin(localDate: LocalDate): Promise<void> {
+    return this.mutate((d) => { d.checkins = d.checkins.filter((c) => c.localDate !== localDate); });
+  }
+
+  deleteAllCheckins(): Promise<void> {
+    return this.mutate((d) => { d.checkins = []; });
+  }
+
+  saveCycle(input: CycleInput, id?: string): Promise<TrainingCycle> {
+    return this.mutate((d) => {
+      const v = validateCycle(input);
+      const i = id ? d.cycles.findIndex((c) => c.id === id) : -1;
+      if (id && i < 0) throw new RepositoryError('cycle_not_found');
+      const now = this.now();
+      const next: TrainingCycle = { ...v, id: id ?? this.newId(), createdAt: i >= 0 ? d.cycles[i].createdAt : now, updatedAt: now };
+      if (i >= 0) d.cycles[i] = next;
+      else d.cycles.push(next);
+      return clone(next);
+    });
+  }
+
+  deleteCycle(id: string): Promise<void> {
+    return this.mutate((d) => { d.cycles = d.cycles.filter((c) => c.id !== id); });
+  }
+
+  upsertDaySchedule(input: DayScheduleInput): Promise<DaySchedule> {
+    return this.mutate((d) => {
+      const v = validateDaySchedule(input);
+      const i = d.daySchedules.findIndex((x) => x.localDate === v.localDate);
+      const now = this.now();
+      const next: DaySchedule = { ...v, id: i >= 0 ? d.daySchedules[i].id : this.newId(), createdAt: i >= 0 ? d.daySchedules[i].createdAt : now, updatedAt: now };
+      if (i >= 0) d.daySchedules[i] = next;
+      else d.daySchedules.push(next);
+      return clone(next);
+    });
+  }
+
+  deleteDaySchedule(localDate: LocalDate): Promise<void> {
+    return this.mutate((d) => { d.daySchedules = d.daySchedules.filter((x) => x.localDate !== localDate); });
   }
 
   async deleteAllData(): Promise<void> {
