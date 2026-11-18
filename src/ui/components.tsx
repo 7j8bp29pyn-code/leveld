@@ -171,7 +171,7 @@ export function ToastHost() {
   if (!toast) return null;
   return (
     <View pointerEvents="box-none" style={s.toastWrap}>
-      <View accessibilityRole="alert" testID="toast" style={[s.toast, toast.kind === 'error' && { borderColor: colors.danger }]}>
+      <View accessibilityRole="alert" testID="toast" style={[s.toast, toast.kind === 'error' && { borderColor: colors.danger }, toast.kind === 'success' && { borderColor: colors.success }]}>
         <Text style={[font.body, { flex: 1 }]}>{toast.message}</Text>
         {toast.action && (
           <Pressable onPress={() => { toast.action!.run(); dismissToast(); }} style={{ paddingHorizontal: space.sm }}>

@@ -1,12 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { addDays, compareDates } from '../../domain/dates';
 import { expansionReady, phaseSuggestion, type PhaseSuggestion } from '../../domain/phases';
+import { assessReadiness, statusForOption, type Assessment, type TrainingOption } from '../../domain/readiness';
 import { itemsForDay, nextItem, type TodayItem } from '../../domain/schedule';
+import { currentCycle, deloadHint, isPlannedRestDay, NO_PROGRESSION_PHASES } from '../../domain/training';
+import { FULFILLED, type Readiness } from '../../domain/types';
+import { ReadinessAdvice, TrainingOptions } from '../../ui/readinessViews';
 import { useStore } from '../../state/AppStore';
 import { Badge, Button, Card, HabitIcon, Muted, ProgressBar, Screen, SectionTitle } from '../../ui/components';
 import { formatDate, nowTime, relativeDay } from '../../ui/format';
@@ -22,16 +27,33 @@ export default function Today() {
   const setDay = (d: string) => setPicked(d === today ? null : d);
 
   const items = useMemo(() => itemsForDay(data.habits, data.entries, day), [data.habits, data.entries, day]);
-  const counted = items.filter((i) => i.entry?.status !== 'skipped' && i.entry?.status !== 'paused' && i.entry?.status !== 'postponed');
-  const done = items.filter((i) => i.entry?.status === 'done').length;
+  // skipped / paused / postponed / health_pause leave the day's total – never a failure
+  const counted = items.filter((i) => !i.entry || FULFILLED.includes(i.entry.status));
+  const done = items.filter((i) => i.entry && FULFILLED.includes(i.entry.status)).length;
   const total = counted.length;
   const isToday = day === today;
   const next = isToday ? nextItem(items, nowTime()) : null;
 
-  const suggestions = useMemo(
-    () => (isToday ? data.habits.map((h) => phaseSuggestion(h, data.entries, data.profile, today)).filter((x): x is PhaseSuggestion => !!x) : []),
-    [isToday, data.habits, data.entries, data.profile, today],
-  );
+  const features = data.profile.features;
+  const checkin = features.checkin ? data.checkins.find((c) => c.localDate === day) ?? null : null;
+  const assessment = assessReadiness(checkin);
+  const cycle = features.cycles ? currentCycle(data.cycles, day) : null;
+  const restDay = isPlannedRestDay(cycle, day);
+  const deload = isToday && features.cycles && features.checkin ? deloadHint(data.cycles, data.checkins, today) : null;
+  const openTraining = items.filter((i) => i.habit.kind === 'training' && !i.entry);
+  // no automatic progression for training on tired/ill days or in deload/maintenance phases
+  const holdTraining = !!assessment?.suppressProgression || (!!cycle && NO_PROGRESSION_PHASES.includes(cycle.phase));
+
+  const suggestions = isToday
+    ? data.habits
+      .filter((h) => !(holdTraining && h.kind === 'training'))
+      .map((h) => phaseSuggestion(h, data.entries, data.profile, today)).filter((x): x is PhaseSuggestion => !!x)
+    : [];
+
+  // quick setup for users from before the update (dismissible, remembered on this device)
+  const [setupDismissed, setSetupDismissed] = useState(true);
+  useEffect(() => { AsyncStorage.getItem('leveld.setupDismissed').then((v) => setSetupDismissed(v === '1')); }, []);
+  const showSetup = !data.profile.trainingLevel && !setupDismissed;
   const showExpansion = isToday && data.profile.mode === 'guided' && data.habits.some((h) => h.status === 'active')
     && expansionReady(data.habits, data.entries, data.profile, today);
 
@@ -80,6 +102,40 @@ export default function Today() {
         {total > 0 && done === total && <Muted style={{ marginTop: space.md, color: colors.success }}>{t('today.allDone')}</Muted>}
       </Card>
 
+      {showSetup && (
+        <Card testID="setup-card" style={{ marginTop: space.md, borderColor: colors.accent }}>
+          <Text style={font.h3}>{t('level.setupCardTitle')}</Text>
+          <Muted style={{ marginTop: 4, marginBottom: space.md }}>{t('level.setupCardText')}</Muted>
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <View style={{ flex: 1 }}><Button testID="setup-open" compact title={t('level.setupCta')} onPress={() => router.push('/setup')} /></View>
+            <View style={{ flex: 1 }}>
+              <Button compact kind="secondary" title={t('phase.dismiss')}
+                onPress={() => { setSetupDismissed(true); AsyncStorage.setItem('leveld.setupDismissed', '1').catch(() => undefined); }} />
+            </View>
+          </View>
+        </Card>
+      )}
+
+      {cycle && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md }}>
+          <Badge tone="accent" label={t('cycles.current', { phase: t(`cycles.phases.${cycle.phase}`) })} />
+          <Muted>{t('cycles.until', { date: formatDate(cycle.endDate) })}</Muted>
+        </View>
+      )}
+      {restDay && <Muted style={{ marginTop: space.sm, color: colors.success }}>{t('readiness.restDay')}</Muted>}
+
+      {features.checkin && isToday && (openTraining.length > 0 || checkin) && (
+        <CheckinCard day={day} assessment={assessment} hasCheckin={!!checkin} openTraining={openTraining} />
+      )}
+
+      {deload && (
+        <Card testID="deload-hint" style={{ marginTop: space.md }}>
+          <Text style={font.h3}>{t('cycles.deloadTitle')}</Text>
+          <Muted style={{ marginTop: 4, marginBottom: space.md }}>{t('cycles.deloadText', { n: deload.exhaustedDays, days: deload.windowDays })}</Muted>
+          <Button compact kind="secondary" title={t('cycles.deloadCta')} onPress={() => router.push({ pathname: '/cycles', params: { deload: '1' } })} />
+        </Card>
+      )}
+
       {suggestions.map((sg) => <SuggestionCard key={sg.habitId} sg={sg} />)}
       {showExpansion && (
         <Card style={{ marginTop: space.md }}>
@@ -104,8 +160,9 @@ export default function Today() {
 function HabitRow({ item, day, onToggle }: { item: TodayItem; day: string; onToggle: () => void }) {
   const { t } = useTranslation();
   const { habit, entry } = item;
-  const done = entry?.status === 'done';
+  const done = !!entry && FULFILLED.includes(entry.status);
   const subtitle: string[] = [];
+  if (habit.kind !== 'habit') subtitle.push(t(`kind.${habit.kind}`));
   if (entry && entry.status !== 'done') {
     subtitle.push(entry.status === 'postponed' ? t('today.status.postponed', { date: formatDate(entry.postponedTo!) }) : t(`today.status.${entry.status}`));
   }
@@ -129,17 +186,14 @@ function HabitRow({ item, day, onToggle }: { item: TodayItem; day: string; onTog
         </View>
         {habit.phase === 1 && !entry && <Badge label={t('today.building')} />}
       </Pressable>
-      <Pressable
+      <CheckButton
         testID={`check-${habit.name}`}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
         accessibilityLabel={done ? t('today.uncheckA11y', { name: habit.name }) : t('today.checkA11y', { name: habit.name })}
         onPress={onToggle}
-        hitSlop={8}
-        style={[st.check, done && { backgroundColor: colors.success, borderColor: colors.success }]}
-      >
-        {done && <Ionicons name="checkmark" size={20} color={colors.onAccent} />}
-      </Pressable>
+        done={done}
+      />
     </View>
   );
 }
@@ -177,3 +231,82 @@ const st = StyleSheet.create({
   rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: space.md, gap: 0 },
   check: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: colors.textFaint, alignItems: 'center', justifyContent: 'center' },
 });
+
+/** Check circle with a subtle confirmation pulse. */
+function CheckButton({ done, onPress, testID, accessibilityLabel }: {
+  done: boolean; onPress: () => void; testID: string; accessibilityRole?: string; accessibilityState?: object; accessibilityLabel: string;
+}) {
+  const [scale] = useState(() => new Animated.Value(1));
+  const press = () => {
+    if (!done) {
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.18, duration: 110, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: Platform.OS !== 'web' }),
+      ]).start();
+    }
+    onPress();
+  };
+  return (
+    <Pressable testID={testID} accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={accessibilityLabel} onPress={press} hitSlop={8}>
+      <Animated.View style={[st.check, done && { backgroundColor: colors.success, borderColor: colors.success }, { transform: [{ scale }] }]}>
+        {done && <Ionicons name="checkmark" size={20} color={colors.onAccent} />}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+const QUICK: Readiness[] = ['fit', 'tired', 'exhausted', 'sick'];
+
+/** Short check-in before planned training + adapted options for each open training. */
+function CheckinCard({ day, assessment, hasCheckin, openTraining }: { day: string; assessment: Assessment | null; hasCheckin: boolean; openTraining: TodayItem[] }) {
+  const { t } = useTranslation();
+  const store = useStore();
+  const [busy, setBusy] = useState(false);
+
+  const quick = async (r: Readiness) => {
+    setBusy(true);
+    await store.saveCheckin({ localDate: day, readiness: r, sleepHours: null, sleepQuality: null, stress: null, soreness: null, symptoms: [], redFlags: [], note: '' });
+    setBusy(false);
+  };
+  const choose = async (item: TodayItem, o: TrainingOption) => {
+    if (o === 'as_planned') return store.toggleDone(item.habit.id, day);
+    setBusy(true);
+    const st = statusForOption(o);
+    await store.setEntry({ habitId: item.habit.id, localDate: day, status: st, postponedTo: st === 'postponed' ? addDays(day, 1) : null });
+    setBusy(false);
+  };
+
+  return (
+    <Card testID="checkin-card" style={{ marginTop: space.md }}>
+      {!hasCheckin ? (
+        <>
+          <Text style={font.h3}>{t('checkin.title')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md }}>
+            {QUICK.map((r) => (
+              <Pressable key={r} testID={`quick-${r}`} disabled={busy} onPress={() => quick(r)}
+                style={{ paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceRaised }}>
+                <Text style={{ color: colors.text, fontWeight: '500' }}>{t(`checkin.readiness.${r}`)}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable onPress={() => router.push({ pathname: '/checkin', params: { date: day } })} style={{ marginTop: space.md }}>
+            <Text style={{ color: colors.accent }}>+ {t('checkin.more')}</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <ReadinessAdvice assessment={assessment} />
+          {assessment && assessment.state !== 'A' && openTraining.map((item) => (
+            <View key={item.habit.id} style={{ marginTop: space.lg }}>
+              <Text style={[font.body, { fontWeight: '600' }]}>{item.habit.name}</Text>
+              <TrainingOptions assessment={assessment} busy={busy} onChoose={(o) => choose(item, o)} />
+            </View>
+          ))}
+          <Pressable testID="checkin-edit" onPress={() => router.push({ pathname: '/checkin', params: { date: day } })} style={{ marginTop: space.md }}>
+            <Text style={{ color: colors.accent }}>{t('checkin.edit')}</Text>
+          </Pressable>
+        </>
+      )}
+    </Card>
+  );
+}

@@ -33,7 +33,7 @@ npm run typecheck && npm run lint
 ```
 
 ```bash
-npx expo export --platform web --output-dir dist && npm run test:e2e   # Playwright-E2E gegen den Web-Build
+npm run build:web:local && npm run test:e2e   # Playwright-E2E gegen den Web-Build (lokaler Modus)
 ```
 
 ## Supabase einrichten (Cloud-Modus mit Konten)
@@ -43,6 +43,16 @@ npx expo export --platform web --output-dir dist && npm run test:e2e   # Playwri
 3. Unter *Authentication → Providers* E-Mail/Passwort aktivieren.
 4. `.env.example` nach `.env` kopieren und `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` eintragen.
 5. App neu starten → Anmeldebildschirm erscheint.
+
+## Update 2 – Trainingslevel, Tagesform, Regeneration, Zyklen, Schichtdienst
+
+Details, Bestandsanalyse und Tests: [docs/UPDATE-2.md](docs/UPDATE-2.md) · Gesundheitsregeln (fachlich zu prüfen): [docs/HEALTH-RULES.md](docs/HEALTH-RULES.md)
+
+**Datenbank:** Für den Cloud-Modus muss zusätzlich `supabase/migrations/20261118000001_levels_readiness_rhythm.sql` im Supabase-SQL-Editor ausgeführt werden (nur Ergänzungen, mehrfach ausführbar).
+
+Implementiert und automatisiert getestet: vereinfachtes Onboarding (Level, Ziele, Startart, optionale Details, überspringbar), Kurz-Einrichtung für bestehende Nutzer ohne Datenverlust, Gesundheits-Check-in mit Einwilligung/Widerruf, regelbasierte Zustände A–D mit Trainingsoptionen, neue Status (angepasst, Regeneration, gesundheitlich ausgesetzt), Regenerations-Gewohnheiten, RPE, Trainingszyklen mit Entlastungs-Hinweis, Tagesrhythmus/Schichtplan, relative Erinnerungen, Kommunikationsstil mit positiven Rückmeldungen.
+
+Nicht auf echten Geräten getestet: geplante Erinnerungen (Planung selbst ist per Unit-Test geprüft). Noch nicht vorhanden: fachlich geprüfte Planvorlagen, Plan-Import per Foto/PDF, vollständiger Satz-Logger und Fortgeschrittenen-Analysen.
 
 ## Status – Phase 1 (Funktionsfähige Grundlage)
 

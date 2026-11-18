@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, Share, Text, View } from 'react-native';
+import { Platform, Share, Switch, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import type { Locale, Mode } from '../../domain/types';
+import { router } from 'expo-router';
+import { featuresForLevel, LEVEL_DEFAULTS } from '../../domain/training';
+import type { CommunicationStyle, FeatureFlags, Locale, Mode, TrainingLevel } from '../../domain/types';
+import { CheckinConsent, LEVELS, STYLES } from '../../ui/profileSteps';
 import { LOCALES } from '../../i18n';
 import { signOut } from '../../services/auth';
 import { getPermission, notificationsSupported, requestPermission, type PermissionState } from '../../services/notifications';
@@ -50,7 +53,69 @@ export default function More() {
       <Text style={[font.label, { marginBottom: 6 }]}>{t('more.mode')}</Text>
       <Segmented<Mode> testID="mode" value={profile.mode} onChange={(m) => store.saveProfile({ mode: m })}
         options={[{ value: 'guided', label: t('more.guided') }, { value: 'custom', label: t('more.custom') }]} />
-      <Muted style={{ marginTop: space.sm }}>{profile.mode === 'guided' ? t('onboarding.guidedText') : t('onboarding.customText')}</Muted>
+      <Muted style={{ marginTop: space.sm }}>
+        {profile.mode === 'guided' ? t('onboarding.guidedText', { n: profile.trainingLevel ? LEVEL_DEFAULTS[profile.trainingLevel].startLimit : 3 }) : t('onboarding.customText')}
+      </Muted>
+
+      <SectionTitle>{t('level.title')}</SectionTitle>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {LEVELS.map((l: TrainingLevel) => (
+          <Chip key={l} testID={`more-level-${l}`} label={t(`level.short.${l}`)} selected={profile.trainingLevel === l}
+            onPress={() => store.saveProfile({ trainingLevel: l, features: featuresForLevel(l, profile.features) })} />
+        ))}
+      </View>
+      <Muted>{t('level.hint')}</Muted>
+      <View style={{ marginTop: space.sm }}>
+        <Button testID="open-setup" compact kind="secondary" title={t('level.setupTitle')} onPress={() => router.push('/setup')} />
+      </View>
+
+      <SectionTitle>{t('style.title')}</SectionTitle>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {STYLES.map((st: CommunicationStyle) => (
+          <Chip key={st} testID={`more-style-${st}`} label={t(`style.${st}`)} selected={profile.communicationStyle === st}
+            onPress={() => store.saveProfile({ communicationStyle: st })} />
+        ))}
+      </View>
+
+      <SectionTitle>{t('features.title')}</SectionTitle>
+      <Muted style={{ marginBottom: space.sm }}>{t('features.hint')}</Muted>
+      {(['detailedLogging', 'rpe', 'cycles'] as (keyof FeatureFlags)[]).map((k) => (
+        <View key={k} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 }}>
+          <Text style={[font.body, { flex: 1, marginRight: space.md }]}>{t(`features.${k}`)}</Text>
+          <Switch testID={`feature-${k}`} value={profile.features[k]} trackColor={{ true: colors.accent, false: colors.border }}
+            onValueChange={(v) => { store.saveProfile({ features: { ...profile.features, [k]: v } }); }} />
+        </View>
+      ))}
+      {profile.features.cycles && (
+        <View style={{ marginTop: space.sm }}>
+          <Button testID="open-cycles" compact kind="secondary" title={t('cycles.title')} onPress={() => router.push('/cycles')} />
+        </View>
+      )}
+
+      <SectionTitle>{t('rhythm.title')}</SectionTitle>
+      <Card onPress={() => router.push('/rhythm')} testID="open-rhythm">
+        <Text style={font.body}>{t(`rhythm.${profile.dayRhythm}`)}</Text>
+        <Muted>{t('rhythm.wake')} {profile.anchors.wake} · {t('rhythm.bedtime')} {profile.anchors.bedtime} · {t('rhythm.dayStart')} {String(profile.dayStartHour).padStart(2, '0')}:00</Muted>
+      </Card>
+
+      <SectionTitle>{t('health.title')}</SectionTitle>
+      <Card>
+        {profile.features.checkin && profile.healthConsentAt ? (
+          <>
+            <Muted testID="health-consent">{t('health.consentGiven', { date: profile.healthConsentAt.slice(0, 10) })}</Muted>
+            <View style={{ marginTop: space.md }}>
+              <Button testID="withdraw-consent" kind="danger" compact title={t('health.withdraw')}
+                onPress={async () => { if (await confirm(t('health.withdrawConfirm'))) await store.withdrawHealthConsent(); }} />
+            </View>
+          </>
+        ) : (
+          <>
+            <Muted>{t('health.none')}</Muted>
+            <CheckinConsent value={false}
+              onChange={(v) => v && store.saveProfile({ features: { ...profile.features, checkin: true }, healthConsentAt: new Date().toISOString() })} />
+          </>
+        )}
+      </Card>
 
       <SectionTitle>{t('more.phaseSettings')}</SectionTitle>
       <Text style={[font.label, { marginBottom: 6 }]}>{t('more.threshold')}</Text>

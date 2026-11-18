@@ -49,7 +49,8 @@
     "test:db": "scripts/test-db.sh",
     "typecheck": "tsc --noEmit",
     "test:e2e": "node e2e/smoke.mjs",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:web:local": "EXPO_OFFLINE=1 EXPO_PUBLIC_SUPABASE_URL= EXPO_PUBLIC_SUPABASE_ANON_KEY= expo export --platform web --output-dir dist"
   },
   "private": true,
   "jest": {

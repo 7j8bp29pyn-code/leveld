@@ -1,5 +1,8 @@
 import { addDays, compareDates, isoWeekday } from './dates';
-import type { CyclePhase, DailyCheckin, FeatureFlags, FieldInput, LocalDate, Phase, TrainingCycle, TrainingLevel } from './types';
+import type {
+  CommunicationStyle, CyclePhase, DailyCheckin, DayAnchors, DayRhythm, FeatureFlags, FieldInput, LocalDate, Phase, Profile, StartPreference,
+  TrainingCycle, TrainingLevel, Weekday,
+} from './types';
 
 /**
  * Entry logic per self-assessed training level. Levels only set DEFAULTS –
@@ -88,4 +91,44 @@ export function deloadHint(cycles: TrainingCycle[], checkins: DailyCheckin[], to
     (k) => k.localDate >= from && k.localDate <= today && (k.readiness === 'exhausted' || k.readiness === 'sick'),
   ).length;
   return exhaustedDays >= 3 ? { exhaustedDays, windowDays: 7 } : null;
+}
+
+export interface SetupAnswers {
+  level: TrainingLevel | null; // null = skipped
+  goals: string[];
+  start: StartPreference | null;
+  days: Weekday[];
+  settings: string[];
+  limitations: string;
+  /** user ticked the consent box for the health check-in */
+  checkin: boolean;
+  style: CommunicationStyle;
+  rhythm: DayRhythm;
+  anchors: DayAnchors;
+  dayStartHour: number;
+}
+
+/**
+ * Profile changes for the answers of the onboarding / quick setup.
+ * Skipped answers leave existing values untouched; nothing is assumed.
+ * Health check-in is only enabled together with a consent timestamp.
+ */
+export function setupPatch(current: Profile, a: SetupAnswers, nowIso: string): Partial<Profile> {
+  const features = a.level ? featuresForLevel(a.level, current.features) : { ...current.features };
+  features.checkin = a.checkin;
+  return {
+    trainingLevel: a.level ?? current.trainingLevel,
+    trainingGoals: a.goals,
+    goals: a.goals.length ? a.goals : current.goals,
+    startPreference: a.start ?? current.startPreference,
+    trainingDays: a.days,
+    trainingSettings: a.settings,
+    trainingLimitations: a.limitations.trim(),
+    communicationStyle: a.style,
+    features,
+    healthConsentAt: a.checkin ? current.healthConsentAt ?? nowIso : null,
+    dayRhythm: a.rhythm,
+    anchors: a.anchors,
+    dayStartHour: a.dayStartHour,
+  };
 }

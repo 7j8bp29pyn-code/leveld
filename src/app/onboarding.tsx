@@ -3,64 +3,100 @@ import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { normalizeTime } from '../domain/dates';
 import { GUIDED_START_LIMIT } from '../domain/phases';
-import type { Mode } from '../domain/types';
+import { LEVEL_DEFAULTS, setupPatch, type SetupAnswers } from '../domain/training';
+import { DEFAULT_PROFILE, type Mode, type ReminderAnchor } from '../domain/types';
 import { useStore } from '../state/AppStore';
 import { Button, Card, Chip, Field, Muted, Screen } from '../ui/components';
-import { ACTIVITY_PRESETS, GOAL_KEYS, habitFromName } from '../ui/presets';
+import { ACTIVITY_PRESETS, habitFromName } from '../ui/presets';
+import {
+  LevelStep, RhythmStep, StartStep, StyleStep, TrainingDetailsStep, TrainingGoalsStep, type RhythmValue, type TrainingDetails,
+} from '../ui/profileSteps';
 import { colors, font, space } from '../ui/theme';
 
-const STEPS = ['welcome', 'name', 'goals', 'activities', 'reminder', 'mode'] as const;
-const REMINDER_OPTIONS = ['07:00', '08:00', '12:00', '18:00', '20:00', '21:30'];
+type Step = 'welcome' | 'name' | 'level' | 'goals' | 'start' | 'details' | 'activities' | 'rhythm' | 'reminder' | 'mode';
+const REMINDER_TIMES = ['07:00', '12:00', '18:00', '20:00'];
+const RELATIVE: { anchor: ReminderAnchor; offset: number }[] = [
+  { anchor: 'wake', offset: 15 }, { anchor: 'first_meal', offset: 0 }, { anchor: 'work_end', offset: 15 }, { anchor: 'bedtime', offset: -30 },
+];
+/** Steps whose answers are optional – they offer "Überspringen". */
+const SKIPPABLE: Step[] = ['name', 'level', 'goals', 'start', 'details', 'activities', 'rhythm', 'reminder'];
 
 interface Pick { name: string; preset: string | null }
+type Reminder = { kind: 'none' } | { kind: 'fixed'; time: string } | { kind: 'relative'; anchor: ReminderAnchor; offset: number };
 
 export default function Onboarding() {
   const { t } = useTranslation();
   const store = useStore();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState<Step>('welcome');
   const [name, setName] = useState('');
+  const [level, setLevel] = useState<SetupAnswers['level']>(null);
   const [goals, setGoals] = useState<string[]>([]);
-  const [customGoal, setCustomGoal] = useState('');
+  const [start, setStart] = useState<SetupAnswers['start']>(null);
+  const [details, setDetails] = useState<TrainingDetails>({ days: [], settings: [], limitations: '', checkin: false });
   const [picks, setPicks] = useState<Pick[]>([]);
   const [customActivity, setCustomActivity] = useState('');
-  const [reminder, setReminder] = useState<string | null>(null);
+  const [rhythm, setRhythm] = useState<RhythmValue>({ rhythm: 'standard', anchors: DEFAULT_PROFILE.anchors, dayStartHour: DEFAULT_PROFILE.dayStartHour });
+  const [reminder, setReminder] = useState<Reminder>({ kind: 'none' });
   const [customTime, setCustomTime] = useState('');
   const [mode, setMode] = useState<Mode>('guided');
+  const [style, setStyle] = useState<SetupAnswers['style']>('supportive');
   const [busy, setBusy] = useState(false);
 
-  const current = STEPS[step];
+  // detail questions only when training is part of the plan
+  const steps: Step[] = ['welcome', 'name', 'level', 'goals', 'start', ...(start && start !== 'habits_only' ? ['details' as const] : []),
+    'activities', 'rhythm', 'reminder', 'mode'];
+  const idx = steps.indexOf(step);
+  const next = () => setStep(steps[Math.min(steps.length - 1, idx + 1)]);
+  const back = () => setStep(steps[Math.max(0, idx - 1)]);
+  const startLimit = level ? LEVEL_DEFAULTS[level].startLimit : GUIDED_START_LIMIT;
+  // a training habit is created when training is planned but none was picked
+  const addTraining = (start === 'existing_plan' || start === 'generate_plan')
+    && !picks.some((p) => ACTIVITY_PRESETS.find((x) => x.key === p.preset)?.kind === 'training');
+  const totalHabits = picks.length + (addTraining ? 1 : 0);
   const toggle = <T,>(list: T[], item: T, eq: (a: T, b: T) => boolean) =>
     list.some((x) => eq(x, item)) ? list.filter((x) => !eq(x, item)) : [...list, item];
 
   async function finish() {
     setBusy(true);
-    const active = mode === 'guided' ? picks.slice(0, GUIDED_START_LIMIT) : picks;
-    const later = mode === 'guided' ? picks.slice(GUIDED_START_LIMIT).map((p) => p.name) : [];
+    const answers: SetupAnswers = {
+      level, goals, start, days: details.days, settings: details.settings, limitations: details.limitations,
+      checkin: details.checkin && !!start && start !== 'habits_only', style, rhythm: rhythm.rhythm, anchors: rhythm.anchors, dayStartHour: rhythm.dayStartHour,
+    };
+    const patch = setupPatch(store.data.profile, answers, new Date().toISOString());
+    const all: Pick[] = addTraining ? [{ name: t('kind.training'), preset: null }, ...picks] : picks;
+    const active = mode === 'guided' ? all.slice(0, startLimit) : all;
+    const later = mode === 'guided' ? all.slice(startLimit).map((p) => p.name) : [];
     for (const [i, p] of active.entries()) {
-      const h = habitFromName(p.name, p.preset, { startDate: store.today, reminderTime: reminder, sortOrder: i });
+      const isGeneratedTraining = addTraining && i === 0;
+      const h = habitFromName(p.name, p.preset, {
+        startDate: store.today, sortOrder: i, level, features: patch.features, trainingDays: details.days,
+        kind: isGeneratedTraining ? 'training' : undefined,
+        reminderTime: reminder.kind === 'fixed' ? reminder.time : null,
+        reminderAnchor: reminder.kind === 'relative' ? reminder.anchor : null,
+        reminderOffsetMin: reminder.kind === 'relative' ? reminder.offset : 0,
+      });
       const id = await store.createHabit(h.input, h.fields);
       if (!id) { setBusy(false); return; }
     }
     const ok = await store.saveProfile({
-      displayName: name.trim(), goals, habitBacklog: later, mode, defaultReminderTime: reminder,
+      ...patch, displayName: name.trim(), habitBacklog: later, mode,
+      defaultReminderTime: reminder.kind === 'fixed' ? reminder.time : null,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin', onboardingCompleted: true,
     });
     if (!ok) setBusy(false);
   }
 
-  const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
-
   return (
     <Screen>
-      {step > 0 && (
+      {idx > 0 && (
         <View style={{ flexDirection: 'row', gap: 4, marginBottom: space.xl }}>
-          {STEPS.slice(1).map((_, i) => (
-            <View key={i} style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: i < step ? colors.accent : colors.surfaceRaised }} />
+          {steps.slice(1).map((s, i) => (
+            <View key={s} style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: i < idx ? colors.accent : colors.surfaceRaised }} />
           ))}
         </View>
       )}
 
-      {current === 'welcome' && (
+      {step === 'welcome' && (
         <View style={{ marginTop: space.xxl * 2 }}>
           <Text style={[font.h1, { fontSize: 40, letterSpacing: 6 }]}>LEVELD</Text>
           <Text style={[font.h2, { color: colors.accent, marginTop: space.sm }]}>{t('app.claim')}</Text>
@@ -69,28 +105,19 @@ export default function Onboarding() {
         </View>
       )}
 
-      {current === 'name' && (
+      {step === 'name' && (
         <>
           <Text style={[font.h1, { marginBottom: space.xl }]}>{t('onboarding.nameTitle')}</Text>
           <Field testID="ob-name" value={name} onChangeText={setName} placeholder={t('onboarding.namePlaceholder')} autoFocus maxLength={80} onSubmitEditing={next} />
         </>
       )}
 
-      {current === 'goals' && (
-        <>
-          <Text style={[font.h1, { marginBottom: space.sm }]}>{t('onboarding.goalsTitle')}</Text>
-          <Muted style={{ marginBottom: space.lg }}>{t('onboarding.goalsHint')}</Muted>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {[...GOAL_KEYS.map((k) => t(`onboarding.goals.${k}`)), ...goals.filter((g) => !GOAL_KEYS.some((k) => t(`onboarding.goals.${k}`) === g))].map((g) => (
-              <Chip key={g} label={g} selected={goals.includes(g)} onPress={() => setGoals(toggle(goals, g, (a, b) => a === b))} />
-            ))}
-          </View>
-          <AddRow value={customGoal} onChange={setCustomGoal} placeholder={t('onboarding.customGoal')}
-            onAdd={() => { const g = customGoal.trim(); if (g && !goals.includes(g)) setGoals([...goals, g]); setCustomGoal(''); }} />
-        </>
-      )}
+      {step === 'level' && <LevelStep value={level} onChange={setLevel} />}
+      {step === 'goals' && <TrainingGoalsStep value={goals} onChange={setGoals} />}
+      {step === 'start' && <StartStep value={start} onChange={setStart} />}
+      {step === 'details' && <TrainingDetailsStep value={details} onChange={setDetails} />}
 
-      {current === 'activities' && (
+      {step === 'activities' && (
         <>
           <Text style={[font.h1, { marginBottom: space.sm }]}>{t('onboarding.activitiesTitle')}</Text>
           <Muted style={{ marginBottom: space.lg }}>{t('onboarding.activitiesHint')}</Muted>
@@ -106,65 +133,76 @@ export default function Onboarding() {
               <Chip key={p.name} label={p.name} selected onPress={() => setPicks(picks.filter((x) => x !== p))} />
             ))}
           </View>
-          <AddRow testID="ob-custom-activity" value={customActivity} onChange={setCustomActivity} placeholder={t('onboarding.customActivity')}
-            onAdd={() => { const n = customActivity.trim(); if (n && !picks.some((p) => p.name === n)) setPicks([...picks, { name: n, preset: null }]); setCustomActivity(''); }} />
+          <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
+            <View style={{ flex: 1 }}>
+              <Field testID="ob-custom-activity" value={customActivity} onChangeText={setCustomActivity} placeholder={t('onboarding.customActivity')} maxLength={80}
+                onSubmitEditing={() => { const n = customActivity.trim(); if (n && !picks.some((p) => p.name === n)) setPicks([...picks, { name: n, preset: null }]); setCustomActivity(''); }} />
+            </View>
+            <Button testID="ob-custom-activity-add" kind="secondary" title={t('common.add')} disabled={!customActivity.trim()}
+              onPress={() => { const n = customActivity.trim(); if (n && !picks.some((p) => p.name === n)) setPicks([...picks, { name: n, preset: null }]); setCustomActivity(''); }} />
+          </View>
         </>
       )}
 
-      {current === 'reminder' && (
+      {step === 'rhythm' && <RhythmStep value={rhythm} onChange={setRhythm} />}
+
+      {step === 'reminder' && (
         <>
           <Text style={[font.h1, { marginBottom: space.sm }]}>{t('onboarding.reminderTitle')}</Text>
           <Muted style={{ marginBottom: space.lg }}>{t('onboarding.reminderHint')}</Muted>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            <Chip label={t('onboarding.noReminder')} selected={reminder === null} onPress={() => setReminder(null)} />
-            {REMINDER_OPTIONS.map((o) => <Chip key={o} label={o} selected={reminder === o} onPress={() => setReminder(o)} />)}
+            <Chip label={t('onboarding.noReminder')} selected={reminder.kind === 'none'} onPress={() => setReminder({ kind: 'none' })} />
+            {RELATIVE.filter((r) => r.anchor !== 'work_end' || rhythm.anchors.workEnd).map((r) => (
+              <Chip key={r.anchor} testID={`ob-rem-${r.anchor}`} label={t(`reminderMode.${r.anchor}`)}
+                selected={reminder.kind === 'relative' && reminder.anchor === r.anchor} onPress={() => setReminder({ kind: 'relative', ...r })} />
+            ))}
+            {REMINDER_TIMES.map((o) => (
+              <Chip key={o} label={o} selected={reminder.kind === 'fixed' && reminder.time === o} onPress={() => setReminder({ kind: 'fixed', time: o })} />
+            ))}
           </View>
-          <Field label={t('habit.reminderTime')} value={customTime} onChangeText={(v) => { setCustomTime(v); const n = normalizeTime(v); if (n) setReminder(n); }}
-            placeholder="HH:MM" error={customTime && !normalizeTime(customTime) ? t('errors.invalid_time') : null} />
+          <Field label={t('habit.reminderTime')} value={customTime} placeholder="HH:MM"
+            onChangeText={(v) => { setCustomTime(v); const n = normalizeTime(v); if (n) setReminder({ kind: 'fixed', time: n }); }}
+            error={customTime && !normalizeTime(customTime) ? t('errors.invalid_time') : null} />
         </>
       )}
 
-      {current === 'mode' && (
+      {step === 'mode' && (
         <>
           <Text style={[font.h1, { marginBottom: space.xl }]}>{t('onboarding.modeTitle')}</Text>
           {(['guided', 'custom'] as Mode[]).map((m) => (
             <Card key={m} testID={`ob-mode-${m}`} onPress={() => setMode(m)}
               style={{ marginBottom: space.md, borderColor: mode === m ? colors.accent : colors.border, borderWidth: 1 }}>
               <Text style={font.h3}>{t(`onboarding.${m}Title`)}</Text>
-              <Muted style={{ marginTop: 4 }}>{t(`onboarding.${m}Text`)}</Muted>
+              <Muted style={{ marginTop: 4 }}>{t(`onboarding.${m}Text`, { n: startLimit })}</Muted>
             </Card>
           ))}
-          {mode === 'guided' && picks.length > GUIDED_START_LIMIT && (
-            <Muted style={{ color: colors.warning, marginBottom: space.md }}>{t('onboarding.guidedLimit', { n: GUIDED_START_LIMIT })}</Muted>
+          {mode === 'guided' && totalHabits > startLimit && (
+            <Muted style={{ color: colors.warning, marginBottom: space.md }}>{t('onboarding.guidedLimit', { n: startLimit })}</Muted>
           )}
-          <Muted style={{ marginBottom: space.xl }}>{t('onboarding.switchLater')}</Muted>
+          <View style={{ marginTop: space.md }}><StyleStep value={style} onChange={setStyle} /></View>
+          <Muted style={{ marginVertical: space.lg }}>{t('onboarding.switchLater')}</Muted>
           <Button testID="ob-finish" title={t('onboarding.finish')} onPress={finish} loading={busy} />
         </>
       )}
 
-      {step > 0 && current !== 'mode' && (
-        <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.xl }}>
-          <View style={{ flex: 1 }}><Button kind="secondary" title={t('common.back')} onPress={() => setStep(step - 1)} /></View>
-          <View style={{ flex: 1 }}><Button testID="ob-next" title={t('common.next')} onPress={next} /></View>
-        </View>
+      {idx > 0 && step !== 'mode' && (
+        <>
+          <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.xl }}>
+            <View style={{ flex: 1 }}><Button kind="secondary" title={t('common.back')} onPress={back} /></View>
+            <View style={{ flex: 1 }}><Button testID="ob-next" title={t('common.next')} onPress={next} /></View>
+          </View>
+          {SKIPPABLE.includes(step) && (
+            <Pressable testID="ob-skip" onPress={next} style={{ alignItems: 'center', marginTop: space.lg }}>
+              <Text style={{ color: colors.textMuted }}>{t('level.skip')}</Text>
+            </Pressable>
+          )}
+        </>
       )}
-      {current === 'mode' && (
-        <Pressable onPress={() => setStep(step - 1)} style={{ alignItems: 'center', marginTop: space.lg }}>
+      {step === 'mode' && (
+        <Pressable onPress={back} style={{ alignItems: 'center', marginTop: space.lg }}>
           <Text style={{ color: colors.textMuted }}>{t('common.back')}</Text>
         </Pressable>
       )}
     </Screen>
-  );
-}
-
-function AddRow({ value, onChange, onAdd, placeholder, testID }: { value: string; onChange: (v: string) => void; onAdd: () => void; placeholder: string; testID?: string }) {
-  const { t } = useTranslation();
-  return (
-    <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
-      <View style={{ flex: 1 }}>
-        <Field testID={testID} value={value} onChangeText={onChange} placeholder={placeholder} onSubmitEditing={onAdd} maxLength={80} />
-      </View>
-      <View><Button testID={testID ? `${testID}-add` : undefined} kind="secondary" title={t('common.add')} onPress={onAdd} disabled={!value.trim()} /></View>
-    </View>
   );
 }

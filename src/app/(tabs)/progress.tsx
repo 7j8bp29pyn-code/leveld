@@ -64,8 +64,13 @@ export default function Progress() {
         <View style={{ flexDirection: 'row', marginTop: space.lg }}>
           <Stat label={t('progress.completed')} value={total.done + total.extra} />
           <Stat label={t('progress.undocumented')} value={total.undocumented} />
-          <Stat label={t('progress.notCounted')} value={total.skipped + total.paused + total.postponed} />
+          <Stat label={t('progress.notCounted')} value={total.skipped + total.paused + total.postponed + total.healthPause} />
         </View>
+        {total.adapted + total.recovery > 0 && (
+          <Muted testID="recovery-stats" style={{ marginTop: space.md }}>
+            {t('today.status.adapted')}: {total.adapted} · {t('today.status.recovery')}: {total.recovery}
+          </Muted>
+        )}
         <Muted style={{ marginTop: space.md, fontSize: 11 }}>{t('progress.rateExplain')}</Muted>
       </Card>
 
@@ -97,7 +102,7 @@ export default function Progress() {
           <ProgressBar value={s.rate} height={4} />
           <Muted style={{ marginTop: space.sm }}>
             {s.done}/{s.done + s.undocumented} · {t('progress.undocumented')}: {s.undocumented}
-            {s.skipped + s.paused + s.postponed ? ` · ${t('progress.notCounted')}: ${s.skipped + s.paused + s.postponed}` : ''}
+            {s.skipped + s.paused + s.postponed + s.healthPause ? ` · ${t('progress.notCounted')}: ${s.skipped + s.paused + s.postponed + s.healthPause}` : ''}
             {streak ? ` · ${t('habit.streak', { n: streak })}` : ''}
           </Muted>
         </Card>

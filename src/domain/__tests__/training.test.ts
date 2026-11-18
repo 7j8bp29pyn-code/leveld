@@ -83,3 +83,27 @@ describe('recovery & motivation', () => {
     expect(isComeback(h, [], '2026-11-18')).toBe(false);
   });
 });
+
+describe('setup answers', () => {
+  const answers = {
+    level: 'regular' as const, goals: ['Kraft steigern'], start: 'existing_plan' as const, days: [1, 3, 5] as (1 | 3 | 5)[], settings: ['gym'],
+    limitations: '  Knie  ', checkin: false, style: 'factual' as const, rhythm: 'standard' as const,
+    anchors: DEFAULT_PROFILE.anchors, dayStartHour: 3,
+  };
+  const { setupPatch } = jest.requireActual('../training') as typeof import('../training');
+
+  it('stores level, goals and preferences separately; check-in only with consent', () => {
+    const p = setupPatch(DEFAULT_PROFILE, answers, '2026-11-18T10:00:00Z');
+    expect(p).toMatchObject({ trainingLevel: 'regular', startPreference: 'existing_plan', trainingLimitations: 'Knie', healthConsentAt: null });
+    expect(p.features).toMatchObject({ detailedLogging: true, rpe: true, checkin: false });
+    const withConsent = setupPatch(DEFAULT_PROFILE, { ...answers, checkin: true }, '2026-11-18T10:00:00Z');
+    expect(withConsent).toMatchObject({ healthConsentAt: '2026-11-18T10:00:00Z', features: { checkin: true } });
+  });
+
+  it('skipping optional answers keeps existing values and assumes nothing', () => {
+    const current = { ...DEFAULT_PROFILE, trainingLevel: 'beginner' as const, goals: ['alt'] };
+    const p = setupPatch(current, { ...answers, level: null, start: null, goals: [], days: [], settings: [], limitations: '' }, 'x');
+    expect(p).toMatchObject({ trainingLevel: 'beginner', goals: ['alt'], startPreference: null, trainingDays: [] });
+    expect(p.features).toEqual(DEFAULT_PROFILE.features);
+  });
+});

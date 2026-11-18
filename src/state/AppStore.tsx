@@ -5,10 +5,14 @@ import { LocalRepository } from '../data/localRepository';
 import type { Repository, Snapshot } from '../data/repository';
 import { SupabaseRepository } from '../data/supabaseRepository';
 import { addDays, toLocalDate } from '../domain/dates';
+import { isComeback, feedbackFor } from '../domain/motivation';
+import { logicalDate } from '../domain/rhythm';
 import { ValidationError } from '../domain/entries';
 import { DISMISS_DAYS } from '../domain/phases';
 import { DEFAULT_PROFILE } from '../domain/types';
-import type { EntryInput, FieldInput, HabitEntry, HabitInput, LocalDate, Phase, Profile } from '../domain/types';
+import type {
+  CheckinInput, CycleInput, DayScheduleInput, EntryInput, FieldInput, HabitEntry, HabitInput, LocalDate, Phase, Profile,
+} from '../domain/types';
 import i18n from '../i18n';
 import { newId } from '../services/ids';
 import { getSupabase } from '../services/supabase';
@@ -23,7 +27,7 @@ type Status = 'loading' | 'ready' | 'error';
 export interface Toast {
   id: number;
   message: string;
-  kind: 'error' | 'info';
+  kind: 'error' | 'info' | 'success';
   action?: { label: string; run: () => void };
 }
 
@@ -50,6 +54,14 @@ interface Store {
   resumeHabit(habitId: string): Promise<boolean>;
   deleteAllData(): Promise<boolean>;
   exportAll(): Promise<Snapshot>;
+  saveCheckin(input: CheckinInput): Promise<boolean>;
+  deleteCheckin(date: LocalDate): Promise<boolean>;
+  /** Withdraws health consent: switches the check-in off and deletes all stored check-ins. */
+  withdrawHealthConsent(): Promise<boolean>;
+  saveCycle(input: CycleInput, id?: string): Promise<boolean>;
+  deleteCycle(id: string): Promise<boolean>;
+  saveDaySchedule(input: DayScheduleInput): Promise<boolean>;
+  deleteDaySchedule(date: LocalDate): Promise<boolean>;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -80,7 +92,9 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
   const [data, setData] = useState<Snapshot>(emptySnapshot);
   const dataRef = useRef(data);
   useLayoutEffect(() => { dataRef.current = data; }, [data]);
-  const [today, setToday] = useState(toLocalDate());
+  const dayStartHour = data.profile.dayStartHour ?? 3;
+  const [clock, setClock] = useState(() => Date.now());
+  const today = logicalDate(new Date(clock), dayStartHour);
   const [toast, setToast] = useState<Toast | null>(null);
 
   const showToast = useCallback((message: string, kind: Toast['kind'] = 'error', action?: Toast['action']) => {
@@ -89,8 +103,8 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
 
   // keep "today" correct across midnight and when app returns to foreground
   useEffect(() => {
-    const tick = () => setToday((prev) => (prev === toLocalDate() ? prev : toLocalDate()));
-    const iv = setInterval(tick, 30_000);
+    const tick = () => setClock(Date.now());
+    const iv = setInterval(tick, 60_000);
     const sub = AppState.addEventListener('change', (s) => s === 'active' && tick());
     return () => { clearInterval(iv); sub.remove(); };
   }, []);
@@ -123,12 +137,19 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
     if (status === 'ready') i18n.changeLanguage(data.profile.locale);
   }, [status, data.profile.locale]);
 
-  // keep local reminders in sync with habit configuration
-  const reminderSig = data.habits.map((h) => `${h.id}${h.status}${h.reminderEnabled}${h.reminderTime}${h.scheduleType}${h.weekdays.join()}${h.name}`).join('|');
+  // keep local reminders in sync with habit configuration, day rhythm and shift plan (re-planned daily)
+  const reminderSig = [
+    today,
+    JSON.stringify(data.profile.anchors), data.profile.dayStartHour,
+    data.daySchedules.map((d) => d.localDate + JSON.stringify(d.anchors)).join(),
+    data.habits.map((h) => `${h.id}${h.status}${h.reminderEnabled}${h.reminderTime}${h.reminderAnchor}${h.reminderOffsetMin}${h.scheduleType}${h.weekdays.join()}${h.name}${h.pausePeriods.length}`).join('|'),
+  ].join('#');
   useEffect(() => {
     if (status !== 'ready') return;
-    syncReminders(dataRef.current.habits, (h) => h.name, (h) => h.goal || i18n.t('today.reminderBody')).catch((e) => console.warn('reminders', e));
-  }, [reminderSig, status]);
+    const d = dataRef.current;
+    syncReminders(d.habits, d.profile, d.daySchedules, today, (h) => h.name, (h) => h.goal || i18n.t('today.reminderBody'))
+      .catch((e) => console.warn('reminders', e));
+  }, [reminderSig, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Runs a repository call; shows a toast on error. */
   const run = useCallback(async <T,>(fn: (r: Repository) => Promise<T>): Promise<T | undefined> => {
@@ -144,6 +165,14 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
   const replaceEntry = (entries: HabitEntry[], habitId: string, date: LocalDate, next: HabitEntry | null) => {
     const rest = entries.filter((e) => !(e.habitId === habitId && e.localDate === date));
     return next ? [...rest, next] : rest;
+  };
+
+  /** Positive, style-dependent confirmation – never pressure, never shaming. */
+  const giveFeedback = (habitId: string, st: HabitEntry['status'], date: LocalDate, entriesBefore: HabitEntry[]) => {
+    const habit = dataRef.current.habits.find((h) => h.id === habitId);
+    if (!habit) return;
+    const fb = feedbackFor(dataRef.current.profile.communicationStyle, habit, st, isComeback(habit, entriesBefore, date));
+    if (fb) showToast(i18n.t(fb.key, fb.params), 'success');
   };
 
   const store: Store = {
@@ -191,9 +220,11 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
     },
 
     async setEntry(input) {
+      const before = dataRef.current.entries;
       const saved = await run((r) => r.upsertEntry(input));
       if (!saved) return false;
       setData((d) => ({ ...d, entries: replaceEntry(d.entries, input.habitId, input.localDate, saved) }));
+      giveFeedback(input.habitId, input.status, input.localDate, before);
       return true;
     },
 
@@ -223,6 +254,7 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
       setData((d) => ({ ...d, entries: replaceEntry(d.entries, habitId, date, optimistic) }));
       const saved = await run((r) => r.upsertEntry({ habitId, localDate: date, status: 'done' }));
       setData((d) => ({ ...d, entries: replaceEntry(d.entries, habitId, date, saved ?? existing ?? null) }));
+      if (saved) giveFeedback(habitId, 'done', date, before);
     },
 
     async changePhase(habitId, to, reason) {
@@ -273,6 +305,49 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
     async exportAll() {
       if (!repo) return emptySnapshot();
       return repo.exportAll();
+    },
+
+    async saveCheckin(input) {
+      const saved = await run((r) => r.upsertCheckin(input));
+      if (saved) setData((d) => ({ ...d, checkins: [...d.checkins.filter((c) => c.localDate !== saved.localDate), saved] }));
+      return !!saved;
+    },
+
+    async deleteCheckin(date) {
+      const ok = await run((r) => r.deleteCheckin(date).then(() => true));
+      if (ok) setData((d) => ({ ...d, checkins: d.checkins.filter((c) => c.localDate !== date) }));
+      return !!ok;
+    },
+
+    async withdrawHealthConsent() {
+      const ok = await run((r) => r.deleteAllCheckins().then(() => true));
+      if (!ok) return false;
+      setData((d) => ({ ...d, checkins: [] }));
+      return store.saveProfile({ healthConsentAt: null, features: { ...dataRef.current.profile.features, checkin: false } });
+    },
+
+    async saveCycle(input, id) {
+      const saved = await run((r) => r.saveCycle(input, id));
+      if (saved) setData((d) => ({ ...d, cycles: [...d.cycles.filter((c) => c.id !== saved.id), saved] }));
+      return !!saved;
+    },
+
+    async deleteCycle(id) {
+      const ok = await run((r) => r.deleteCycle(id).then(() => true));
+      if (ok) setData((d) => ({ ...d, cycles: d.cycles.filter((c) => c.id !== id) }));
+      return !!ok;
+    },
+
+    async saveDaySchedule(input) {
+      const saved = await run((r) => r.upsertDaySchedule(input));
+      if (saved) setData((d) => ({ ...d, daySchedules: [...d.daySchedules.filter((x) => x.localDate !== saved.localDate), saved] }));
+      return !!saved;
+    },
+
+    async deleteDaySchedule(date) {
+      const ok = await run((r) => r.deleteDaySchedule(date).then(() => true));
+      if (ok) setData((d) => ({ ...d, daySchedules: d.daySchedules.filter((x) => x.localDate !== date) }));
+      return !!ok;
     },
   };
 

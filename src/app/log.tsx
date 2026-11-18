@@ -32,6 +32,7 @@ export default function LogScreen() {
     Object.fromEntries(Object.entries(entry?.values ?? {}).map(([k, v]) => [k, typeof v === 'boolean' ? v : String(v ?? '')])),
   );
   const [note, setNote] = useState(entry?.note ?? '');
+  const [rpe, setRpe] = useState<number | null>(entry?.rpe ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
@@ -57,6 +58,7 @@ export default function LogScreen() {
     setBusy(true);
     const ok = await store.setEntry({
       habitId: habit!.id, localDate: date, status, postponedTo: status === 'postponed' ? postponeTo : null, values: out, note,
+      rpe: measured ? rpe : null,
     });
     setBusy(false);
     if (ok) router.back();
@@ -69,6 +71,11 @@ export default function LogScreen() {
     if (ok) router.back();
   }
 
+  const measured = status === 'done' || status === 'adapted';
+  const isTraining = habit.kind === 'training';
+  const showRpe = isTraining && store.data.profile.features.rpe && measured;
+  // recovery-aware statuses for training: adapted / recovery / health reasons
+  const trainingStatuses: EntryStatus[] = isTraining ? ['adapted', 'recovery', 'health_pause'] : [];
   const statusOptions: { value: EntryStatus; label: string }[] = [
     { value: 'done', label: t('log.markDone') },
     { value: 'skipped', label: t('log.skip') },
@@ -85,6 +92,13 @@ export default function LogScreen() {
 
       <SectionTitle>{t('log.status')}</SectionTitle>
       <Segmented testID="log-status" options={statusOptions} value={status} onChange={setStatus} />
+      {trainingStatuses.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: space.sm }}>
+          {trainingStatuses.map((st) => (
+            <Chip key={st} testID={`status-${st}`} label={t(`today.status.${st}`)} selected={status === st} onPress={() => setStatus(st)} />
+          ))}
+        </View>
+      )}
       {status !== 'done' && <Muted style={{ marginTop: space.sm }}>{t('log.notFailure')}</Muted>}
 
       {status === 'postponed' && (
@@ -100,7 +114,19 @@ export default function LogScreen() {
         </>
       )}
 
-      {status === 'done' && (
+      {showRpe && (
+        <>
+          <SectionTitle>{t('log.rpe')}</SectionTitle>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+              <Chip key={n} testID={`rpe-${n}`} label={String(n)} selected={rpe === n} onPress={() => setRpe(rpe === n ? null : n)} />
+            ))}
+          </View>
+          <Muted>{t('log.rpeHint')}</Muted>
+        </>
+      )}
+
+      {measured && (
         <>
           <SectionTitle>{t('log.fields')}</SectionTitle>
           {allFields.length === 0 && <Muted>{t('log.noFields')}</Muted>}

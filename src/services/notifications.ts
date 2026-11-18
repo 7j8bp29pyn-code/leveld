@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { parseTime } from '../domain/dates';
-import type { Habit } from '../domain/types';
+import { planReminders } from '../domain/rhythm';
+import type { DaySchedule, Habit, LocalDate, Profile } from '../domain/types';
 
 /**
  * Local reminders for habits. Each reminder carries a deep link (`url`) to the
@@ -33,16 +34,21 @@ export async function requestPermission(): Promise<PermissionState> {
   return s.granted ? 'granted' : 'denied';
 }
 
-/** Our ISO weekday (1=Mon) → expo weekday (1=Sun). */
-export const toExpoWeekday = (iso: number) => (iso % 7) + 1;
+/** Days ahead that are planned as one-shot reminders; re-planned whenever the app is opened. */
+export const PLAN_DAYS = 10;
 
 /**
  * Re-schedules all habit reminders (idempotent: cancels ours first).
+ * Reminders are planned per day from the user's rhythm / shift plan, so relative
+ * reminders ("after waking") work and fixed times inside the sleep window are skipped.
  * Returns the number of scheduled notifications.
  */
-export async function syncReminders(habits: Habit[], title: (h: Habit) => string, body: (h: Habit) => string): Promise<number> {
+export async function syncReminders(
+  habits: Habit[], profile: Profile, schedules: DaySchedule[], today: LocalDate,
+  title: (h: Habit) => string, body: (h: Habit) => string,
+): Promise<number> {
   if (!notificationsSupported) return 0;
-  const wanted = habits.some((h) => h.status === 'active' && h.reminderEnabled && h.reminderTime);
+  const wanted = habits.some((h) => h.status === 'active' && h.reminderEnabled && (h.reminderTime || h.reminderAnchor));
   let perm = await getPermission();
   // ask once, at the moment the user actually sets up a reminder
   if (perm === 'undetermined' && wanted) perm = await requestPermission();
@@ -58,28 +64,21 @@ export async function syncReminders(habits: Habit[], title: (h: Habit) => string
       importance: Notifications.AndroidImportance.DEFAULT,
     });
   }
-  let count = 0;
-  for (const h of habits) {
-    if (h.status !== 'active' || !h.reminderEnabled || !h.reminderTime) continue;
-    if (count >= MAX_SCHEDULED) break; // iOS keeps at most 64 pending local notifications
-    const { hour, minute } = parseTime(h.reminderTime);
-    const content = { title: title(h), body: body(h), sound: true, data: { source: 'leveld-habit', url: `/log?habitId=${h.id}` } };
-    const days = h.scheduleType === 'weekdays' ? h.weekdays : [1, 2, 3, 4, 5, 6, 7];
-    if (days.length === 7) {
-      await Notifications.scheduleNotificationAsync({
-        content, trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute, channelId: 'habits' },
-      });
-      count++;
-    } else {
-      for (const d of days) {
-        if (count >= MAX_SCHEDULED) break;
-        await Notifications.scheduleNotificationAsync({
-          content,
-          trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: toExpoWeekday(d), hour, minute, channelId: 'habits' },
-        });
-        count++;
-      }
-    }
+  const now = Date.now();
+  const plan = planReminders(habits, profile, schedules, today, PLAN_DAYS)
+    .map((p) => {
+      const [y, m, d] = p.fireOn.split('-').map(Number);
+      const { hour, minute } = parseTime(p.time);
+      return { ...p, at: new Date(y, m - 1, d, hour, minute) };
+    })
+    .filter((p) => p.at.getTime() > now)
+    .slice(0, MAX_SCHEDULED); // iOS keeps at most 64 pending local notifications
+  for (const p of plan) {
+    const h = habits.find((x) => x.id === p.habitId)!;
+    await Notifications.scheduleNotificationAsync({
+      content: { title: title(h), body: body(h), sound: true, data: { source: 'leveld-habit', url: `/log?habitId=${h.id}&date=${p.date}` } },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: p.at, channelId: 'habits' },
+    });
   }
-  return count;
+  return plan.length;
 }

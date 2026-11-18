@@ -5,8 +5,12 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { isLocalDate, normalizeTime } from '../domain/dates';
 import { defaultFieldsFor, expansionReady, GUIDED_START_LIMIT } from '../domain/phases';
+import { isInSleepWindow } from '../domain/rhythm';
 import { currentStreak } from '../domain/stats';
-import { PHASES, type FieldInput, type FieldType, type HabitInput, type Phase, type ScheduleType, type Weekday } from '../domain/types';
+import { LEVEL_DEFAULTS, trainingFieldsFor } from '../domain/training';
+import {
+  PHASES, type FieldInput, type FieldType, type HabitInput, type HabitKind, type Phase, type ReminderAnchor, type ScheduleType, type Weekday,
+} from '../domain/types';
 import { useStore } from '../state/AppStore';
 import { Badge, Button, Card, Chip, Field, Muted, Screen, SectionTitle, Segmented } from '../ui/components';
 import { confirm } from '../ui/confirm';
@@ -27,7 +31,7 @@ export default function HabitEditor() {
     name: params.name ?? '', category: 'general', icon: 'ellipse-outline', description: '', goal: '', scheduleType: 'daily',
     weekdays: [...WEEKDAYS], timesPerWeek: 3, reminderTime: store.data.profile.defaultReminderTime,
     reminderEnabled: !!store.data.profile.defaultReminderTime, startDate: store.today, phase: 1, status: 'active',
-    pausePeriods: [], sortOrder: store.data.habits.length,
+    pausePeriods: [], sortOrder: store.data.habits.length, kind: 'habit', reminderAnchor: null, reminderOffsetMin: 0,
   });
   const [fields, setFields] = useState<FieldInput[]>(() => existingFields.map((f) => ({ ...f })));
   const [timeText, setTimeText] = useState(form.reminderTime ?? '');
@@ -44,7 +48,7 @@ export default function HabitEditor() {
     if (!form.name.trim()) errs.name = t('errors.required');
     const time = timeText ? normalizeTime(timeText) : null;
     if (timeText && !time) errs.time = t('errors.invalid_time');
-    if (form.reminderEnabled && !time) errs.time = t('errors.invalid_time');
+    if (form.reminderEnabled && !form.reminderAnchor && !time) errs.time = t('errors.invalid_time');
     if (!isLocalDate(form.startDate)) errs.startDate = t('errors.invalid_date');
     if (form.scheduleType === 'weekdays' && form.weekdays.length === 0) errs.weekdays = t('errors.required');
     fields.forEach((f, i) => { if (!f.label.trim()) errs[`field${i}`] = t('errors.required'); });
@@ -104,6 +108,22 @@ export default function HabitEditor() {
         {CATEGORIES.map((c) => <Chip key={c} label={t(`habit.categories.${c}`)} selected={form.category === c} onPress={() => set('category', c)} />)}
       </View>
 
+      <Text style={[font.label, { marginBottom: 6 }]}>{t('kind.label')}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: space.sm }}>
+        {(['habit', 'training', 'recovery'] as HabitKind[]).map((k) => (
+          <Chip key={k} testID={`kind-${k}`} label={t(`kind.${k}`)} selected={(form.kind ?? 'habit') === k}
+            onPress={() => {
+              set('kind', k);
+              // new training habit: phase & fields from the user's level (beginners: just check it off)
+              const level = store.data.profile.trainingLevel;
+              if (!existing && k === 'training' && level) {
+                set('phase', LEVEL_DEFAULTS[level].trainingPhase);
+                if (fields.length === 0) setFields(trainingFieldsFor(level, store.data.profile.features));
+              }
+            }} />
+        ))}
+      </View>
+
       <Field label={t('habit.goal')} value={form.goal} onChangeText={(v) => set('goal', v)} placeholder={t('habit.goalPlaceholder')} maxLength={500} />
       <Field label={`${t('habit.description')} (${t('common.optional')})`} value={form.description} onChangeText={(v) => set('description', v)} multiline maxLength={1000} />
 
@@ -127,15 +147,39 @@ export default function HabitEditor() {
       )}
 
       <SectionTitle>{t('habit.reminder')}</SectionTitle>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
-        <View style={{ flexDirection: 'row', paddingTop: 4 }}>
-          <Chip label={t('common.no')} selected={!form.reminderEnabled} onPress={() => set('reminderEnabled', false)} />
-          <Chip label={t('common.yes')} selected={form.reminderEnabled} onPress={() => set('reminderEnabled', true)} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field value={timeText} onChangeText={setTimeText} placeholder={t('habit.reminderTime')} error={errors.time} keyboardType="numbers-and-punctuation" />
-        </View>
+      <View style={{ flexDirection: 'row' }}>
+        <Chip testID="reminder-off" label={t('common.no')} selected={!form.reminderEnabled} onPress={() => set('reminderEnabled', false)} />
+        <Chip testID="reminder-on" label={t('common.yes')} selected={form.reminderEnabled} onPress={() => set('reminderEnabled', true)} />
       </View>
+      {form.reminderEnabled && (
+        <>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {(['fixed', 'wake', 'first_meal', 'work_end', 'bedtime'] as const).map((m) => {
+              const selected = m === 'fixed' ? !form.reminderAnchor : form.reminderAnchor === m;
+              return (
+                <Chip key={m} testID={`remmode-${m}`} label={t(`reminderMode.${m}`)} selected={selected}
+                  onPress={() => setForm((f) => ({
+                    ...f, reminderAnchor: m === 'fixed' ? null : (m as ReminderAnchor),
+                    reminderOffsetMin: m === 'bedtime' ? -30 : m === 'fixed' ? 0 : f.reminderAnchor ? f.reminderOffsetMin : 15,
+                  }))} />
+              );
+            })}
+          </View>
+          {!form.reminderAnchor ? (
+            <Field testID="reminder-time" value={timeText} onChangeText={setTimeText} placeholder={t('habit.reminderTime')} error={errors.time} keyboardType="numbers-and-punctuation"
+              hint={normalizeTime(timeText) && isInSleepWindow(normalizeTime(timeText)!, store.data.profile.anchors) ? t('reminderMode.sleepWarning') : undefined} />
+          ) : (
+            <>
+              <Text style={[font.label, { marginBottom: 6 }]}>{t('reminderMode.offset')}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {[-60, -30, 0, 15, 30, 60].map((o) => (
+                  <Chip key={o} label={o > 0 ? `+${o}` : String(o)} selected={(form.reminderOffsetMin ?? 0) === o} onPress={() => set('reminderOffsetMin', o)} />
+                ))}
+              </View>
+            </>
+          )}
+        </>
+      )}
 
       <Field label={t('habit.startDate')} value={form.startDate} onChangeText={(v) => set('startDate', v)} error={errors.startDate} autoCapitalize="none" />
 

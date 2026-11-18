@@ -63,6 +63,10 @@ function Gate({ signedIn }: { signedIn: boolean }) {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="habit" options={{ presentation: 'modal', title: '' }} />
         <Stack.Screen name="log" options={{ presentation: 'modal', title: t('log.title') }} />
+        <Stack.Screen name="checkin" options={{ presentation: 'modal', title: t('checkin.title') }} />
+        <Stack.Screen name="setup" options={{ title: t('level.setupTitle') }} />
+        <Stack.Screen name="rhythm" options={{ title: t('rhythm.title') }} />
+        <Stack.Screen name="cycles" options={{ title: t('cycles.title') }} />
       </Stack.Protected>
     </Stack>
   );
