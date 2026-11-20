@@ -188,7 +188,7 @@ export function StyleStep({ value, onChange }: { value: CommunicationStyle; onCh
     <>
       <Text style={[font.h3, { marginBottom: space.sm }]}>{t('style.title')}</Text>
       {STYLES.map((s) => (
-        <OptionCard key={s} testID={`style-${s}`} title={t(`style.${s}`)} text={t(`motivation.${s}.done.1`)} selected={value === s} onPress={() => onChange(s)} />
+        <OptionCard key={s} testID={`style-${s}`} title={t(`style.${s}`)} text={t(`motivation.${s}.done.1`, { name: t('kind.training') })} selected={value === s} onPress={() => onChange(s)} />
       ))}
     </>
   );

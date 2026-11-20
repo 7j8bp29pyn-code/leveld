@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { normalizeTime } from '../domain/dates';
@@ -41,6 +41,8 @@ export default function Onboarding() {
   const [mode, setMode] = useState<Mode>('guided');
   const [style, setStyle] = useState<SetupAnswers['style']>('supportive');
   const [busy, setBusy] = useState(false);
+  // habits already created in an earlier attempt (e.g. when saving the profile failed) – never create twice
+  const created = useRef(new Set<string>());
 
   // detail questions only when training is part of the plan
   const steps: Step[] = ['welcome', 'name', 'level', 'goals', 'start', ...(start && start !== 'habits_only' ? ['details' as const] : []),
@@ -75,8 +77,11 @@ export default function Onboarding() {
         reminderAnchor: reminder.kind === 'relative' ? reminder.anchor : null,
         reminderOffsetMin: reminder.kind === 'relative' ? reminder.offset : 0,
       });
+      const key = `${p.preset ?? ''}|${p.name}`;
+      if (created.current.has(key)) continue;
       const id = await store.createHabit(h.input, h.fields);
       if (!id) { setBusy(false); return; }
+      created.current.add(key);
     }
     const ok = await store.saveProfile({
       ...patch, displayName: name.trim(), habitBacklog: later, mode,
