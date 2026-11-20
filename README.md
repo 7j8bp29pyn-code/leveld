@@ -44,6 +44,12 @@ npm run build:web:local && npm run test:e2e   # Playwright-E2E gegen den Web-Bui
 4. `.env.example` nach `.env` kopieren und `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` eintragen.
 5. App neu starten → Anmeldebildschirm erscheint.
 
+## Testen auf dem Handy (Expo Go)
+
+Dauerhafter QR-Code (öffnet immer die neueste Testversion): [docs/leveld-test-qr.png](docs/leveld-test-qr.png)
+Link: `exp://u.expo.dev/198b19ab-8611-47ef-ba19-41400a48b4a4?runtime-version=1.0.0&channel-name=preview`
+Gilt, solange die App-Version in `app.json` 1.0.0 bleibt; neue Updates mit `eas update --channel preview --environment preview`.
+
 ## Update 2 – Trainingslevel, Tagesform, Regeneration, Zyklen, Schichtdienst
 
 Details, Bestandsanalyse und Tests: [docs/UPDATE-2.md](docs/UPDATE-2.md) · Gesundheitsregeln (fachlich zu prüfen): [docs/HEALTH-RULES.md](docs/HEALTH-RULES.md)
