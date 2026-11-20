@@ -65,14 +65,15 @@ describe('recovery & motivation', () => {
   it('a planned rest day counts as success when the recovery task is done', () => {
     const rest = habit({ kind: 'recovery', scheduleType: 'weekdays', weekdays: [7], startDate: '2026-11-01' });
     expect(habitStats(rest, [entry('2026-11-15')], '2026-11-09', '2026-11-15', '2026-11-18').rate).toBe(1);
-    expect(feedbackFor('supportive', rest, 'done', false)?.key).toBe('motivation.supportive.rest_day');
+    expect(feedbackFor('supportive', rest, 'done', false)?.key).toBe('motivation.supportive.rest_day.0');
   });
 
   it('feedback depends only on the chosen style and what happened', () => {
     const h = habit({ name: 'Tennis' });
-    expect(feedbackFor('humorous', h, 'done', false)).toEqual({ key: 'motivation.humorous.done', params: { name: 'Tennis' } });
-    expect(feedbackFor('factual', h, 'adapted', false)?.key).toBe('motivation.factual.adapted');
-    expect(feedbackFor('supportive', h, 'health_pause', false)?.key).toBe('motivation.supportive.health_pause');
+    expect(feedbackFor('humorous', h, 'done', false)).toEqual({ key: 'motivation.humorous.done.0', params: { name: 'Tennis' } });
+    expect(feedbackFor('factual', h, 'adapted', false, 2)?.key).toBe('motivation.factual.adapted.2');
+    expect(feedbackFor('gym', h, 'health_pause', false, 4)?.key).toBe('motivation.gym.health_pause.1'); // variants rotate
+    expect(feedbackFor('gym', h, 'done', true, 2.7)?.key).toBe('motivation.gym.comeback.2');
     expect(feedbackFor('supportive', h, 'skipped', false)).toBeNull(); // no comment, no shaming
   });
 
@@ -105,5 +106,28 @@ describe('setup answers', () => {
     const p = setupPatch(current, { ...answers, level: null, start: null, goals: [], days: [], settings: [], limitations: '' }, 'x');
     expect(p).toMatchObject({ trainingLevel: 'beginner', goals: ['alt'], startPreference: null, trainingDays: [] });
     expect(p.features).toEqual(DEFAULT_PROFILE.features);
+  });
+});
+
+describe('motivation texts', () => {
+  it('every style has 3 variants for every case in German and English', () => {
+    const de = jest.requireActual('../../i18n/de').default;
+    const en = jest.requireActual('../../i18n/en').default;
+    for (const lang of [de, en]) {
+      for (const style of ['supportive', 'humorous', 'factual', 'gym']) {
+        for (const c of ['done', 'adapted', 'recovery', 'rest_day', 'health_pause', 'comeback']) {
+          expect(lang.motivation[style][c]).toHaveLength(3);
+        }
+      }
+    }
+  });
+
+  it('health-related texts never push to train', () => {
+    const de = jest.requireActual('../../i18n/de').default;
+    for (const style of ['supportive', 'humorous', 'factual', 'gym']) {
+      for (const text of de.motivation[style].health_pause as string[]) {
+        expect(text).not.toMatch(/trotzdem|durchziehen|keine ausrede/i);
+      }
+    }
   });
 });

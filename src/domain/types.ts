@@ -27,7 +27,7 @@ export type HabitKind = 'habit' | 'training' | 'recovery';
 /** Self-assessment, NOT a validated performance diagnosis. */
 export type TrainingLevel = 'beginner' | 'occasional' | 'regular' | 'structured';
 export type StartPreference = 'existing_plan' | 'generate_plan' | 'habits_only';
-export type CommunicationStyle = 'supportive' | 'humorous' | 'factual';
+export type CommunicationStyle = 'supportive' | 'humorous' | 'factual' | 'gym';
 export type DayRhythm = 'standard' | 'early' | 'late' | 'night' | 'rotating' | 'custom';
 export type ShiftType = 'early' | 'late' | 'night' | 'off' | 'custom';
 export type ReminderAnchor = 'wake' | 'first_meal' | 'work_end' | 'bedtime';
@@ -300,3 +300,18 @@ export interface PlanUploadInput {
   mimeType: string;
   bytes: ArrayBuffer;
 }
+
+/** One-off task to tick off once (unlike a recurring habit). Never counted in habit rates. */
+export interface Todo {
+  id: string;
+  title: string;
+  /** optional due day; null = whenever */
+  dueDate: LocalDate | null;
+  /** ISO timestamp when ticked off; null = open */
+  doneAt: string | null;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TodoInput = Pick<Todo, 'title' | 'dueDate' | 'note'>;

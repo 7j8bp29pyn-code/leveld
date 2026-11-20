@@ -2,8 +2,9 @@ import { buildEntry, validateCheckin, validateCycle, validateDaySchedule, valida
 import { DEFAULT_PROFILE, normalizeHabit, normalizeProfile } from '../domain/types';
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldInput, Habit, HabitInput, LocalDate, PhaseChange,
-  Profile, TrainingCycle, TrainingPlan,
+  Profile, Todo, TodoInput, TrainingCycle, TrainingPlan,
 } from '../domain/types';
+import { validateTodo } from '../domain/todos';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
 
@@ -44,7 +45,7 @@ export class LocalRepository implements Repository {
     if (!raw) {
       this.cache = {
         schemaVersion: SCHEMA_VERSION, profile: { ...DEFAULT_PROFILE }, habits: [], fields: [], entries: [], phaseChanges: [],
-        checkins: [], cycles: [], daySchedules: [], trainingPlans: [],
+        checkins: [], cycles: [], daySchedules: [], trainingPlans: [], todos: [],
       };
       return this.cache;
     }
@@ -62,6 +63,7 @@ export class LocalRepository implements Repository {
         cycles: parsed.cycles ?? [],
         daySchedules: parsed.daySchedules ?? [],
         trainingPlans: parsed.trainingPlans ?? [],
+        todos: parsed.todos ?? [],
       };
       return this.cache;
     } catch (e) {
@@ -220,6 +222,33 @@ export class LocalRepository implements Repository {
 
   deleteDaySchedule(localDate: LocalDate): Promise<void> {
     return this.mutate((d) => { d.daySchedules = d.daySchedules.filter((x) => x.localDate !== localDate); });
+  }
+
+  saveTodo(input: TodoInput, id?: string): Promise<Todo> {
+    return this.mutate((d) => {
+      const v = validateTodo(input);
+      const i = id ? d.todos.findIndex((x) => x.id === id) : -1;
+      if (id && i < 0) throw new RepositoryError('not_found');
+      const now = this.now();
+      const next: Todo = i >= 0 ? { ...d.todos[i], ...v, updatedAt: now } : { ...v, id: this.newId(), doneAt: null, createdAt: now, updatedAt: now };
+      if (i >= 0) d.todos[i] = next;
+      else d.todos.push(next);
+      return clone(next);
+    });
+  }
+
+  setTodoDone(id: string, done: boolean): Promise<Todo> {
+    return this.mutate((d) => {
+      const i = d.todos.findIndex((x) => x.id === id);
+      if (i < 0) throw new RepositoryError('not_found');
+      const now = this.now();
+      d.todos[i] = { ...d.todos[i], doneAt: done ? now : null, updatedAt: now };
+      return clone(d.todos[i]);
+    });
+  }
+
+  deleteTodo(id: string): Promise<void> {
+    return this.mutate((d) => { d.todos = d.todos.filter((x) => x.id !== id); });
   }
 
   /** Files are only stored in cloud mode (private bucket); local mode has no file storage. */

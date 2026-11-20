@@ -50,6 +50,13 @@ Dauerhafter QR-Code (öffnet immer die neueste Testversion): [docs/leveld-test-q
 Link: `exp://u.expo.dev/198b19ab-8611-47ef-ba19-41400a48b4a4?runtime-version=1.0.0&channel-name=preview`
 Gilt, solange die App-Version in `app.json` 1.0.0 bleibt; neue Updates mit `eas update --channel preview --environment preview`.
 
+## Update 3 & 4 – Trainingsplan-Upload, Aufgaben, Gym-Stil
+
+- Migrationen `20261119000001_training_plans.sql` und `20261120000001_todos_gym_style.sql` im Supabase-SQL-Editor ausführen (additiv, mehrfach ausführbar).
+- Trainingspläne als Foto/PDF in privatem Speicher (nur Cloud-Modus); KI-Auslesen noch nicht implementiert.
+- Aufgaben (einmalige To-dos) mit optionalem Fälligkeitsdatum und Vorschlägen; zählen nicht in die Erfüllungsquote.
+- Kommunikationsstil „Oldschool-Gym“; je Stil und Situation 3 eigene Textvarianten (keine Zitate realer Personen).
+
 ## Update 2 – Trainingslevel, Tagesform, Regeneration, Zyklen, Schichtdienst
 
 Details, Bestandsanalyse und Tests: [docs/UPDATE-2.md](docs/UPDATE-2.md) · Gesundheitsregeln (fachlich zu prüfen): [docs/HEALTH-RULES.md](docs/HEALTH-RULES.md)

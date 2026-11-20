@@ -12,6 +12,8 @@ import { itemsForDay, nextItem, type TodayItem } from '../../domain/schedule';
 import { currentCycle, deloadHint, isPlannedRestDay, NO_PROGRESSION_PHASES } from '../../domain/training';
 import { FULFILLED, type Readiness } from '../../domain/types';
 import { ReadinessAdvice, TrainingOptions } from '../../ui/readinessViews';
+import { todosForDay } from '../../domain/todos';
+import { TodoRow } from '../../ui/todoViews';
 import { useStore } from '../../state/AppStore';
 import { Badge, Button, Card, HabitIcon, Muted, ProgressBar, Screen, SectionTitle } from '../../ui/components';
 import { formatDate, nowTime, relativeDay } from '../../ui/format';
@@ -34,6 +36,7 @@ export default function Today() {
   const isToday = day === today;
   const next = isToday ? nextItem(items, nowTime()) : null;
 
+  const todoItems = todosForDay(data.todos, day, today, data.profile.dayStartHour);
   const features = data.profile.features;
   const checkin = features.checkin ? data.checkins.find((c) => c.localDate === day) ?? null : null;
   const assessment = assessReadiness(checkin);
@@ -161,6 +164,14 @@ export default function Today() {
         </Card>
       )}
       {items.map((item) => <HabitRow key={item.habit.id} item={item} day={day} onToggle={() => toggle(item)} />)}
+
+      {(todoItems.length > 0 || isToday) && (
+        <SectionTitle right={isToday ? (
+          <Pressable testID="todo-goto" onPress={() => router.push('/habits')}><Text style={{ color: colors.accent }}>+ {t('todos.add')}</Text></Pressable>
+        ) : undefined}>{t('todos.title')}</SectionTitle>
+      )}
+      {todoItems.map((x) => <TodoRow key={x.todo.id} todo={x.todo} overdue={x.overdue} />)}
+      {isToday && todoItems.length === 0 && <Muted>{t('todos.empty')}</Muted>}
     </Screen>
   );
 }
@@ -197,7 +208,7 @@ function HabitRow({ item, day, onToggle }: { item: TodayItem; day: string; onTog
       <CheckButton
         testID={`check-${habit.name}`}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: done }}
+        accessibilityState={{ checked: done }} aria-checked={done}
         accessibilityLabel={done ? t('today.uncheckA11y', { name: habit.name }) : t('today.checkA11y', { name: habit.name })}
         onPress={onToggle}
         done={done}
@@ -255,7 +266,7 @@ function CheckButton({ done, onPress, testID, accessibilityLabel }: {
     onPress();
   };
   return (
-    <Pressable testID={testID} accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={accessibilityLabel} onPress={press} hitSlop={8}>
+    <Pressable testID={testID} accessibilityRole="checkbox" accessibilityState={{ checked: done }} aria-checked={done} accessibilityLabel={accessibilityLabel} onPress={press} hitSlop={8}>
       <Animated.View style={[st.check, done && { backgroundColor: colors.success, borderColor: colors.success }, { transform: [{ scale }] }]}>
         {done && <Ionicons name="checkmark" size={20} color={colors.onAccent} />}
       </Animated.View>

@@ -1,6 +1,6 @@
 import type de from './de';
 
-type Widen<T> = { [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
+type Widen<T> = { [K in keyof T]: T[K] extends string ? string : T[K] extends readonly string[] ? string[] : Widen<T[K]> };
 
 const en: Widen<typeof de> = {
   app: { claim: 'Change that grows with you.' },
@@ -132,7 +132,7 @@ const en: Widen<typeof de> = {
   },
   style: {
     title: 'How should LEVELD talk to you?',
-    supportive: 'Friendly and supportive', humorous: 'Humorous and direct', factual: 'Factual and performance-oriented',
+    supportive: 'Friendly and supportive', humorous: 'Humorous and direct', factual: 'Factual and performance-oriented', gym: 'Old-school gym – tough but kind',
   },
   rhythm: {
     title: 'Daily rhythm', hint: 'So reminders fit your everyday life – shift work included.',
@@ -192,14 +192,49 @@ const en: Widen<typeof de> = {
     title: 'Health data', consentGiven: 'Consent given on {{date}}.', none: 'No consent – no health information is stored.',
     withdraw: 'Withdraw consent & delete check-ins', withdrawConfirm: 'Switch off the health check-in and permanently delete all stored check-ins?' },
   motivation: {
-    supportive: { done: 'Well done – {{name}} is complete.', adapted: 'Nicely adapted. A lighter session moves you forward too.',
-      recovery: 'Consciously recovered – that is part of progress.', rest_day: 'Recovery was on your plan today. You consciously made room for regeneration.',
-      health_pause: 'Good decision. Get well first.', comeback: 'Great to have you back!' },
-    humorous: { done: 'Boom, {{name}} done. The couch is disappointed.', adapted: 'Lite version works too. Done is done.',
-      recovery: 'Recovery: the most underrated workout.', rest_day: 'Rest day mastered. Pros call it “regeneration”.',
-      health_pause: 'Being ill is not a training stimulus. Back to bed.', comeback: 'Look who’s back! Welcome.' },
-    factual: { done: '{{name}}: done.', adapted: 'Session completed in adapted form.', recovery: 'Recovery logged.',
-      rest_day: 'Planned rest day completed.', health_pause: 'Training suspended for health reasons.', comeback: 'Return logged.' },
+    supportive: {
+      done: ['Well done – {{name}} is complete.', 'Great! Another step for you.', 'Done. This is how habits are built.'],
+      adapted: ['Nicely adapted. A lighter session moves you forward too.', 'Smartly dosed – showing up beats maximum.', 'Adapted is not worth less. Well done.'],
+      recovery: ['Consciously recovered – that is part of progress.', 'Recovery is training for tomorrow.', 'You listened to yourself. Your body thanks you.'],
+      rest_day: ['Recovery was on your plan today. You consciously made room for regeneration.', 'Rest day done – that is discipline too.', 'Recovered instead of exhausted. Just right.'],
+      health_pause: ['Good decision. Get well first.', 'Health comes first. Training will wait for you.', 'Rest – you lose nothing.'],
+      comeback: ['Great to have you back!', 'Welcome back – every restart counts.', 'Back again. That is what matters most.'],
+    },
+    humorous: {
+      done: ['Boom, {{name}} done. The couch is disappointed.', '{{name}}: checked. Your inner couch potato filed a complaint.', 'Done. No applause from the fridge – rightly so.'],
+      adapted: ['Lite version works too. Done is done.', 'Half portion, full points.', 'Energy-saving mode today – still counts.'],
+      recovery: ['Recovery: the most underrated workout.', 'Couch training with a plan. Respect.', 'Muscles grow while chilling. Science, kind of.'],
+      rest_day: ['Rest day mastered. Pros call it “regeneration”.', 'Took a break today – professionally.', 'Did nothing and still got it right. Rare.'],
+      health_pause: ['Being ill is not a training stimulus. Back to bed.', 'Tea instead of training. Very grown-up.', 'Today only your immune system trains.'],
+      comeback: ['Look who’s back! Welcome.', 'Comeback Monday can be a Thursday too.', 'Back! We kept the dumbbells warm for you.'],
+    },
+    factual: {
+      done: ['{{name}}: done.', '{{name}} logged.', 'Entry saved: {{name}}.'],
+      adapted: ['Session completed in adapted form.', 'Adapted session logged.', 'Completed (adapted).'],
+      recovery: ['Recovery logged.', 'Recovery recorded.', 'Recovery session saved.'],
+      rest_day: ['Planned rest day completed.', 'Rest day logged.', 'Recovery per plan fulfilled.'],
+      health_pause: ['Training suspended for health reasons.', 'Health pause logged – not counted.', 'Suspended (health).'],
+      comeback: ['Return logged.', 'First session after a break logged.', 'Comeback saved.'],
+    },
+    gym: {
+      done: ['{{name}} done. It was hard – that’s why it counts.', 'Set done. No excuses, only results.', 'Iron moved, goal reached. That’s how it’s built.'],
+      adapted: ['Less weight, clean reps – that’s bodybuilding.', 'Lighter today, heavy again tomorrow. Smart training.', 'Form over ego. Strong decision.'],
+      recovery: ['You don’t grow in the gym, you grow after it. Well recovered.', 'Rest is part of the plan. Champions recover too.', 'Muscles are built during the break. Done.'],
+      rest_day: ['Rest day kept. Tomorrow we push again.', 'Today you grow. Without a barbell.', 'Recovery day done – your gains say thanks.'],
+      health_pause: ['No training when ill. Get healthy first, then heavy again.', 'Recovering is your job today. The iron isn’t going anywhere.', 'Real athletes know when to rest. Get well soon.'],
+      comeback: ['Back under the iron! Every champion started over once.', 'Back again. Bar up, let’s go.', 'Comeback in progress. Step by step back to your old form.'],
+    },
+  },
+  todos: {
+    title: 'Tasks', hint: 'One-off to-dos to tick off – separate from your habits and without effect on the rate.',
+    add: 'Add task', placeholder: 'e.g. book physio appointment', due: 'Due on (optional)', dueToday: 'Today', dueTomorrow: 'Tomorrow', noDue: 'No date',
+    open: 'Open', done: 'Done', empty: 'No open tasks.', since: 'since {{date}}', suggestions: 'Suggestions',
+    deleteConfirm: 'Delete “{{name}}”?', checkA11y: 'Check off {{name}}', showDone: 'Show done ({{n}})', hideDone: 'Hide done',
+    ideas: {
+      uploadPlan: 'Upload training plan', checkup: 'Book a health check-up', weekPlan: 'Set training days for the week',
+      shoes: 'Get suitable training shoes', measure: 'Measure starting values (weight, girth)', photo: 'Take a progress photo',
+      mealPrep: 'Plan meal prep for the week', bottle: 'Get a water bottle', bedtime: 'Set a fixed bedtime', gymBag: 'Pack gym bag the evening before',
+    },
   },
   plans: {
     title: 'Training plans', hint: 'Upload your existing plan as a photo or PDF. The file is stored privately in your account – only you can see it.',

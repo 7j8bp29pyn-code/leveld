@@ -11,7 +11,7 @@ import { ValidationError } from '../domain/entries';
 import { DISMISS_DAYS } from '../domain/phases';
 import { DEFAULT_PROFILE } from '../domain/types';
 import type {
-  CheckinInput, CycleInput, DayScheduleInput, EntryInput, FieldInput, HabitEntry, HabitInput, LocalDate, Phase, PlanUploadInput, Profile, TrainingPlan,
+  CheckinInput, CycleInput, DayScheduleInput, EntryInput, FieldInput, HabitEntry, HabitInput, LocalDate, Phase, PlanUploadInput, Profile, TodoInput, TrainingPlan,
 } from '../domain/types';
 import i18n from '../i18n';
 import { newId } from '../services/ids';
@@ -65,13 +65,17 @@ interface Store {
   uploadPlan(input: PlanUploadInput): Promise<boolean>;
   openPlanUrl(plan: TrainingPlan): Promise<string | null>;
   deletePlan(plan: TrainingPlan): Promise<boolean>;
+  saveTodo(input: TodoInput, id?: string): Promise<boolean>;
+  /** One-tap tick off / reopen with optimistic UI. */
+  toggleTodo(id: string): Promise<void>;
+  deleteTodo(id: string): Promise<boolean>;
 }
 
 const Ctx = createContext<Store | null>(null);
 
 const emptySnapshot = (): Snapshot => ({
   profile: { ...DEFAULT_PROFILE },
-  habits: [], fields: [], entries: [], phaseChanges: [], checkins: [], cycles: [], daySchedules: [], trainingPlans: [],
+  habits: [], fields: [], entries: [], phaseChanges: [], checkins: [], cycles: [], daySchedules: [], trainingPlans: [], todos: [],
 });
 
 export function errorMessage(e: unknown): string {
@@ -174,7 +178,7 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
   const giveFeedback = (habitId: string, st: HabitEntry['status'], date: LocalDate, entriesBefore: HabitEntry[]) => {
     const habit = dataRef.current.habits.find((h) => h.id === habitId);
     if (!habit) return;
-    const fb = feedbackFor(dataRef.current.profile.communicationStyle, habit, st, isComeback(habit, entriesBefore, date));
+    const fb = feedbackFor(dataRef.current.profile.communicationStyle, habit, st, isComeback(habit, entriesBefore, date), Math.random() * 3);
     if (fb) showToast(i18n.t(fb.key, fb.params), 'success');
   };
 
@@ -345,6 +349,32 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
       const saved = await run((r) => r.upsertDaySchedule(input));
       if (saved) setData((d) => ({ ...d, daySchedules: [...d.daySchedules.filter((x) => x.localDate !== saved.localDate), saved] }));
       return !!saved;
+    },
+
+    async saveTodo(input, id) {
+      const saved = await run((r) => r.saveTodo(input, id));
+      if (saved) setData((d) => ({ ...d, todos: [...d.todos.filter((x) => x.id !== saved.id), saved] }));
+      return !!saved;
+    },
+
+    async toggleTodo(id) {
+      const before = dataRef.current.todos.find((x) => x.id === id);
+      if (!before) return;
+      const done = !before.doneAt;
+      const optimistic = { ...before, doneAt: done ? new Date().toISOString() : null };
+      setData((d) => ({ ...d, todos: d.todos.map((x) => (x.id === id ? optimistic : x)) }));
+      const saved = await run((r) => r.setTodoDone(id, done));
+      setData((d) => ({ ...d, todos: d.todos.map((x) => (x.id === id ? saved ?? before : x)) }));
+      if (saved && done) {
+        const style = dataRef.current.profile.communicationStyle;
+        showToast(i18n.t(`motivation.${style}.done.${Math.floor(Math.random() * 3)}`, { name: saved.title }), 'success');
+      }
+    },
+
+    async deleteTodo(id) {
+      const ok = await run((r) => r.deleteTodo(id).then(() => true));
+      if (ok) setData((d) => ({ ...d, todos: d.todos.filter((x) => x.id !== id) }));
+      return !!ok;
     },
 
     async uploadPlan(input) {

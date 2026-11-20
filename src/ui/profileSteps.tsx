@@ -17,7 +17,7 @@ export const TRAINING_GOALS = ['habits', 'muscle', 'fatloss', 'strength', 'fitne
 export const STARTS: StartPreference[] = ['existing_plan', 'generate_plan', 'habits_only'];
 export const SETTINGS = ['gym', 'home', 'outdoor', 'club'] as const;
 export const RHYTHMS: DayRhythm[] = ['standard', 'early', 'late', 'night', 'rotating', 'custom'];
-export const STYLES: CommunicationStyle[] = ['supportive', 'humorous', 'factual'];
+export const STYLES: CommunicationStyle[] = ['supportive', 'humorous', 'factual', 'gym'];
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
 
 function OptionCard({ title, text, selected, onPress, testID }: { title: string; text?: string; selected: boolean; onPress: () => void; testID?: string }) {
@@ -123,7 +123,7 @@ export function CheckinConsent({ value, onChange }: { value: boolean; onChange: 
         <Badge tone="warning" label={t('level.sensitive')} />
       </View>
       <Muted style={{ marginBottom: space.md }}>{t('level.checkinText')}</Muted>
-      <Pressable testID="checkin-consent" accessibilityRole="switch" accessibilityState={{ checked: value }} onPress={() => onChange(!value)}
+      <Pressable testID="checkin-consent" accessibilityRole="switch" accessibilityState={{ checked: value }} aria-checked={value} onPress={() => onChange(!value)}
         style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
         <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.accent, false: colors.border }} />
         <Muted style={{ flex: 1 }}>{t('level.consent')}</Muted>
@@ -188,7 +188,7 @@ export function StyleStep({ value, onChange }: { value: CommunicationStyle; onCh
     <>
       <Text style={[font.h3, { marginBottom: space.sm }]}>{t('style.title')}</Text>
       {STYLES.map((s) => (
-        <OptionCard key={s} testID={`style-${s}`} title={t(`style.${s}`)} text={t(`motivation.${s}.done`, { name: '…' })} selected={value === s} onPress={() => onChange(s)} />
+        <OptionCard key={s} testID={`style-${s}`} title={t(`style.${s}`)} text={t(`motivation.${s}.done.1`)} selected={value === s} onPress={() => onChange(s)} />
       ))}
     </>
   );

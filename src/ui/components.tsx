@@ -69,7 +69,7 @@ export function Chip({ label, selected, onPress, testID }: { label: string; sele
     <Pressable
       testID={testID}
       accessibilityRole="checkbox"
-      accessibilityState={{ checked: !!selected }}
+      accessibilityState={{ checked: !!selected }} aria-checked={!!selected}
       onPress={onPress}
       style={[s.chip, selected && { backgroundColor: colors.accentMuted, borderColor: colors.accent }]}
     >

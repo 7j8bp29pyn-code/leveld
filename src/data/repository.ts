@@ -1,6 +1,6 @@
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
-  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, TrainingCycle, TrainingPlan,
+  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, Todo, TodoInput, TrainingCycle, TrainingPlan,
 } from '../domain/types';
 
 export interface Snapshot {
@@ -14,6 +14,7 @@ export interface Snapshot {
   cycles: TrainingCycle[];
   daySchedules: DaySchedule[];
   trainingPlans: TrainingPlan[];
+  todos: Todo[];
 }
 
 /**
@@ -48,6 +49,10 @@ export interface Repository {
   /** Short-lived signed URL to view the file. */
   planUrl(plan: TrainingPlan): Promise<string>;
   deletePlan(plan: TrainingPlan): Promise<void>;
+  saveTodo(input: TodoInput, id?: string): Promise<Todo>;
+  /** Tick off (doneAt = now) or reopen (null). */
+  setTodoDone(id: string, done: boolean): Promise<Todo>;
+  deleteTodo(id: string): Promise<void>;
   /** GDPR: deletes all data of the current user (and the account for Supabase). */
   deleteAllData(): Promise<void>;
   /** Machine-readable export of all stored data (JSON). */

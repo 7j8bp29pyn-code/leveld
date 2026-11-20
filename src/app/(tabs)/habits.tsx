@@ -9,6 +9,7 @@ import type { Habit } from '../../domain/types';
 import { useStore } from '../../state/AppStore';
 import { Badge, Button, Card, HabitIcon, Muted, ProgressBar, Screen, SectionTitle } from '../../ui/components';
 import { pct } from '../../ui/format';
+import { AddTodo, TodoList } from '../../ui/todoViews';
 import { colors, font, space } from '../../ui/theme';
 
 export default function Habits() {
@@ -29,12 +30,17 @@ export default function Habits() {
     <Screen>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={font.h1}>{t('tabs.habits')}</Text>
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
-          <Button testID="habits-plans" compact kind="secondary" icon="document-attach-outline" title={t('plans.title')} onPress={() => router.push('/plans')} />
-          <Button testID="new-habit" compact icon="add" title={t('common.add')} onPress={() => router.push('/habit')} />
-        </View>
+        <Button testID="new-habit" compact icon="add" title={t('common.add')} onPress={() => router.push('/habit')} />
       </View>
       {data.profile.mode === 'guided' && <Muted style={{ marginTop: space.sm }}>{t('habit.guidedHint')}</Muted>}
+      <View style={{ flexDirection: 'row', marginTop: space.md }}>
+        <Button testID="habits-plans" compact kind="secondary" icon="document-attach-outline" title={t('plans.title')} onPress={() => router.push('/plans')} />
+      </View>
+
+      <SectionTitle>{t('todos.title')}</SectionTitle>
+      <Muted style={{ marginBottom: space.md }}>{t('todos.hint')}</Muted>
+      <AddTodo />
+      <View style={{ marginTop: space.md }}><TodoList /></View>
 
       {data.habits.length === 0 && (
         <Card style={{ marginTop: space.xl }}>

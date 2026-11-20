@@ -3,8 +3,9 @@ import { buildEntry, planStoragePath, validateCheckin, validateCycle, validateDa
 import { DEFAULT_PROFILE, normalizeProfile } from '../domain/types';
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
-  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, TrainingCycle, TrainingPlan,
+  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, Todo, TodoInput, TrainingCycle, TrainingPlan,
 } from '../domain/types';
+import { validateTodo } from '../domain/todos';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
 
@@ -76,6 +77,9 @@ export const mapCycle = (r: Row): TrainingCycle => ({
   id: r.id, name: r.name, goal: r.goal, phase: r.phase, startDate: r.start_date, endDate: r.end_date, sessionsPerWeek: r.sessions_per_week,
   restWeekdays: r.rest_weekdays ?? [], notes: r.notes, confirmedBy: r.confirmed_by, createdAt: r.created_at, updatedAt: r.updated_at,
 });
+export const mapTodo = (r: Row): Todo => ({
+  id: r.id, title: r.title, dueDate: r.due_date, doneAt: r.done_at, note: r.note, createdAt: r.created_at, updatedAt: r.updated_at,
+});
 export const PLAN_BUCKET = 'training-plans';
 export const mapPlan = (r: Row): TrainingPlan => ({
   id: r.id, title: r.title, storagePath: r.storage_path, mimeType: r.mime_type, sizeBytes: r.size_bytes, note: r.note, createdAt: r.created_at,
@@ -115,7 +119,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async load(sinceDate: LocalDate): Promise<Snapshot> {
-    const [p, h, f, e, c, ci, cy, ds, tp] = await Promise.all([
+    const [p, h, f, e, c, ci, cy, ds, tp, td] = await Promise.all([
       this.db.from('profiles').select('*').maybeSingle(),
       this.db.from('habits').select('*').order('sort_order'),
       this.db.from('field_definitions').select('*').order('sort_order'),
@@ -125,6 +129,8 @@ export class SupabaseRepository implements Repository {
       this.db.from('training_cycles').select('*').order('start_date'),
       this.db.from('day_schedules').select('*').gte('local_date', sinceDate),
       this.db.from('training_plans').select('*').order('created_at', { ascending: false }),
+      // open to-dos + those done within the history window
+      this.db.from('todos').select('*').or(`done_at.is.null,done_at.gte.${sinceDate}`),
     ]);
     const profileRowData = checkMaybe(p);
     return {
@@ -138,6 +144,8 @@ export class SupabaseRepository implements Repository {
       daySchedules: check(ds).map(mapDaySchedule),
       // optional module: if migration 3 is missing the app still loads (uploads then report an error)
       trainingPlans: tp.error ? [] : (tp.data ?? []).map(mapPlan),
+      // optional module: tolerated if migration 4 is missing
+      todos: td.error ? [] : (td.data ?? []).map(mapTodo),
     };
   }
 
@@ -277,6 +285,24 @@ export class SupabaseRepository implements Repository {
 
   async deleteDaySchedule(localDate: LocalDate) {
     checkMaybe(await this.db.from('day_schedules').delete().eq('local_date', localDate));
+  }
+
+  async saveTodo(input: TodoInput, id?: string): Promise<Todo> {
+    const user_id = await this.userId();
+    const v = validateTodo(input);
+    const row = { title: v.title, due_date: v.dueDate, note: v.note };
+    const res = id
+      ? await this.db.from('todos').update(row).eq('id', id).select().single()
+      : await this.db.from('todos').insert({ id: this.newId(), user_id, ...row }).select().single();
+    return mapTodo(check(res));
+  }
+
+  async setTodoDone(id: string, done: boolean): Promise<Todo> {
+    return mapTodo(check(await this.db.from('todos').update({ done_at: done ? new Date().toISOString() : null }).eq('id', id).select().single()));
+  }
+
+  async deleteTodo(id: string) {
+    checkMaybe(await this.db.from('todos').delete().eq('id', id));
   }
 
   async uploadPlan(input: PlanUploadInput): Promise<TrainingPlan> {

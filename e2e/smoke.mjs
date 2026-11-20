@@ -28,7 +28,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 page.on('dialog', (d) => d.accept());
-const id = (t) => page.getByTestId(t);
+const id = (t) => page.getByTestId(t).filter({ visible: true });
 const shot = async (n) => SHOTS && page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
 const step = (s) => console.log('✓', s);
 
@@ -74,12 +74,12 @@ try {
   await id('option-lighter').waitFor();
   await shot('03b-checkin-tired');
   await id('option-lighter').click();                     // lighter session → "adapted", counts as fulfilled
-  await page.getByText('Light-Version läuft auch').waitFor(); // humorous style
+  await page.getByText(/Light-Version läuft auch|Halbe Portion, volle Punkte|Energiesparmodus/).waitFor(); // humorous style (3 variants)
   await page.getByText('1 von 4 erledigt').waitFor();
   step('check-in B → lighter session (adapted) with positive feedback');
 
   await id('check-Pole Dance').click();
-  await page.getByText('Zack, Pole Dance erledigt').waitFor();
+  await page.getByText(/Zack, Pole Dance erledigt|Pole Dance: abgehakt|Applaus vom Kühlschrank/).waitFor();
   await page.getByText('2 von 4 erledigt').waitFor();
   step('one-tap check');
 
@@ -197,6 +197,26 @@ try {
   step('withdraw health consent deletes check-ins');
   await page.getByRole('tab', { name: /Heute/ }).click();
   await id('checkin-card').waitFor({ state: 'detached' });
+  // one-off to-dos: add own + suggestion, show on Today, tick off with style feedback (gym style)
+  await page.getByRole('tab', { name: /Mehr/ }).click();
+  await id('more-style-gym').click();
+  await page.getByRole('tab', { name: /Gewohnheiten/ }).click();
+  await id('todo-input').click();
+  await id('todo-input').pressSequentially('Physio-Termin vereinbaren');
+  await id('todo-due-1').click();                         // due today
+  await id('todo-add').click();
+  await id('todo-idea-Fortschrittsfoto machen').click();
+  await id('todolist-Physio-Termin vereinbaren').waitFor();
+  await shot('10-todos');
+  await page.getByRole('tab', { name: /Heute/ }).click();
+  await id('todo-Fortschrittsfoto machen').waitFor();
+  await id('todo-check-Physio-Termin vereinbaren').click();
+  await page.getByText(/Schwer war’s|Keine Ausreden|Eisen bewegt/).waitFor();   // gym style texts
+  await page.reload();
+  await id('todo-check-Physio-Termin vereinbaren').waitFor();
+  assert.equal(await id('todo-check-Physio-Termin vereinbaren').getAttribute('aria-checked'), 'true');
+  step('to-dos: add, suggestion, tick off on Today, persisted; gym-style feedback');
+
   // shift work: rotating shifts with a per-day plan
   await page.getByRole('tab', { name: /Mehr/ }).click();
   await id('open-rhythm').click();

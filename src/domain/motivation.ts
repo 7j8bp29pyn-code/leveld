@@ -8,8 +8,11 @@ import { FULFILLED, type CommunicationStyle, type EntryStatus, type Habit, type 
  */
 export type FeedbackCase = 'done' | 'adapted' | 'recovery' | 'rest_day' | 'health_pause' | 'comeback';
 
+/** Number of text variants per style and case (rotated so it doesn't get monotonous). */
+export const FEEDBACK_VARIANTS = 3;
+
 export interface Feedback {
-  /** i18n key: motivation.<style>.<case> */
+  /** i18n key: motivation.<style>.<case>.<variant> */
   key: string;
   params: { name: string };
 }
@@ -34,7 +37,8 @@ export function feedbackCase(habit: Habit, status: EntryStatus, comeback: boolea
   return comeback ? 'comeback' : 'done';
 }
 
-export function feedbackFor(style: CommunicationStyle, habit: Habit, status: EntryStatus, comeback: boolean): Feedback | null {
+export function feedbackFor(style: CommunicationStyle, habit: Habit, status: EntryStatus, comeback: boolean, variant = 0): Feedback | null {
   const c = feedbackCase(habit, status, comeback);
-  return c ? { key: `motivation.${style}.${c}`, params: { name: habit.name } } : null;
+  const v = ((Math.floor(variant) % FEEDBACK_VARIANTS) + FEEDBACK_VARIANTS) % FEEDBACK_VARIANTS;
+  return c ? { key: `motivation.${style}.${c}.${v}`, params: { name: habit.name } } : null;
 }

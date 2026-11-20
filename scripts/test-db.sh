@@ -18,3 +18,4 @@ $PSQL -f "$ROOT/supabase/tests/rls_test.sql"
 for f in "${MIGS[@]:1}"; do $PSQL -f "$f"; $PSQL -f "$f"; done
 $PSQL -f "$ROOT/supabase/tests/rls_test_2.sql"
 $PSQL -f "$ROOT/supabase/tests/rls_test_3.sql"
+$PSQL -f "$ROOT/supabase/tests/rls_test_4.sql"
