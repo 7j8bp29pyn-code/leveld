@@ -8,11 +8,17 @@ import { FULFILLED, type CommunicationStyle, type EntryStatus, type Habit, type 
  */
 export type FeedbackCase = 'done' | 'adapted' | 'recovery' | 'rest_day' | 'health_pause' | 'comeback';
 
-/** Number of text variants per style and case (rotated so it doesn't get monotonous). */
+/** Minimum number of text variants per style and case (rotated so it doesn't get monotonous). */
 export const FEEDBACK_VARIANTS = 3;
 
+/** Picks one of `count` variants for a random value r in [0,1). */
+export function variantKey(base: string, count: number, r: number): string {
+  const n = Math.max(1, Math.floor(count));
+  return `${base}.${Math.min(n - 1, Math.max(0, Math.floor(r * n)))}`;
+}
+
 export interface Feedback {
-  /** i18n key: motivation.<style>.<case>.<variant> */
+  /** i18n key of the variant list: motivation.<style>.<case> */
   key: string;
   params: { name: string };
 }
@@ -37,8 +43,7 @@ export function feedbackCase(habit: Habit, status: EntryStatus, comeback: boolea
   return comeback ? 'comeback' : 'done';
 }
 
-export function feedbackFor(style: CommunicationStyle, habit: Habit, status: EntryStatus, comeback: boolean, variant = 0): Feedback | null {
+export function feedbackFor(style: CommunicationStyle, habit: Habit, status: EntryStatus, comeback: boolean): Feedback | null {
   const c = feedbackCase(habit, status, comeback);
-  const v = ((Math.floor(variant) % FEEDBACK_VARIANTS) + FEEDBACK_VARIANTS) % FEEDBACK_VARIANTS;
-  return c ? { key: `motivation.${style}.${c}.${v}`, params: { name: habit.name } } : null;
+  return c ? { key: `motivation.${style}.${c}`, params: { name: habit.name } } : null;
 }

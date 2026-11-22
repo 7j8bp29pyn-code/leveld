@@ -5,7 +5,7 @@ import { LocalRepository } from '../data/localRepository';
 import type { Repository, Snapshot } from '../data/repository';
 import { SupabaseRepository } from '../data/supabaseRepository';
 import { addDays, toLocalDate } from '../domain/dates';
-import { isComeback, feedbackFor } from '../domain/motivation';
+import { isComeback, feedbackFor, variantKey } from '../domain/motivation';
 import { logicalDate } from '../domain/rhythm';
 import { ValidationError } from '../domain/entries';
 import { DISMISS_DAYS } from '../domain/phases';
@@ -174,12 +174,19 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
     return next ? [...rest, next] : rest;
   };
 
+  /** One random entry of an i18n text list (all variants, however many there are). */
+  const randomText = (base: string, params: Record<string, string>) => {
+    const list = i18n.t(base, { returnObjects: true }) as unknown;
+    const count = Array.isArray(list) ? list.length : 1;
+    return i18n.t(Array.isArray(list) ? variantKey(base, count, Math.random()) : base, params);
+  };
+
   /** Positive, style-dependent confirmation – never pressure, never shaming. */
   const giveFeedback = (habitId: string, st: HabitEntry['status'], date: LocalDate, entriesBefore: HabitEntry[]) => {
     const habit = dataRef.current.habits.find((h) => h.id === habitId);
     if (!habit) return;
-    const fb = feedbackFor(dataRef.current.profile.communicationStyle, habit, st, isComeback(habit, entriesBefore, date), Math.random() * 3);
-    if (fb) showToast(i18n.t(fb.key, fb.params), 'success');
+    const fb = feedbackFor(dataRef.current.profile.communicationStyle, habit, st, isComeback(habit, entriesBefore, date));
+    if (fb) showToast(randomText(fb.key, fb.params), 'success');
   };
 
   const store: Store = {
@@ -371,7 +378,7 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
       setData((d) => ({ ...d, todos: d.todos.map((x) => (x.id === id ? saved ?? before : x)) }));
       if (saved && done) {
         const style = dataRef.current.profile.communicationStyle;
-        showToast(i18n.t(`motivation.${style}.done.${Math.floor(Math.random() * 3)}`, { name: saved.title }), 'success');
+        showToast(randomText(`motivation.${style}.done`, { name: saved.title }), 'success');
       }
     },
 

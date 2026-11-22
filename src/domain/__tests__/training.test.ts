@@ -1,5 +1,5 @@
 import { currentCycle, deloadHint, featuresForLevel, isPlannedRestDay, LEVEL_DEFAULTS, trainingFieldsFor } from '../training';
-import { feedbackFor, isComeback } from '../motivation';
+import { feedbackFor, isComeback, variantKey } from '../motivation';
 import { habitStats, currentStreak } from '../stats';
 import { DEFAULT_PROFILE, type DailyCheckin, type TrainingCycle } from '../types';
 import { entry, habit } from '../../test/fixtures';
@@ -65,15 +65,15 @@ describe('recovery & motivation', () => {
   it('a planned rest day counts as success when the recovery task is done', () => {
     const rest = habit({ kind: 'recovery', scheduleType: 'weekdays', weekdays: [7], startDate: '2026-11-01' });
     expect(habitStats(rest, [entry('2026-11-15')], '2026-11-09', '2026-11-15', '2026-11-18').rate).toBe(1);
-    expect(feedbackFor('supportive', rest, 'done', false)?.key).toBe('motivation.supportive.rest_day.0');
+    expect(feedbackFor('supportive', rest, 'done', false)?.key).toBe('motivation.supportive.rest_day');
   });
 
   it('feedback depends only on the chosen style and what happened', () => {
     const h = habit({ name: 'Tennis' });
-    expect(feedbackFor('humorous', h, 'done', false)).toEqual({ key: 'motivation.humorous.done.0', params: { name: 'Tennis' } });
-    expect(feedbackFor('factual', h, 'adapted', false, 2)?.key).toBe('motivation.factual.adapted.2');
-    expect(feedbackFor('gym', h, 'health_pause', false, 4)?.key).toBe('motivation.gym.health_pause.1'); // variants rotate
-    expect(feedbackFor('gym', h, 'done', true, 2.7)?.key).toBe('motivation.gym.comeback.2');
+    expect(feedbackFor('humorous', h, 'done', false)).toEqual({ key: 'motivation.humorous.done', params: { name: 'Tennis' } });
+    expect(feedbackFor('gym', h, 'done', true)?.key).toBe('motivation.gym.comeback');
+    expect(variantKey('motivation.gym.done', 23, 0)).toBe('motivation.gym.done.0');
+    expect(variantKey('motivation.gym.done', 23, 0.9999)).toBe('motivation.gym.done.22'); // every variant reachable
     expect(feedbackFor('supportive', h, 'skipped', false)).toBeNull(); // no comment, no shaming
   });
 
@@ -116,9 +116,17 @@ describe('motivation texts', () => {
     for (const lang of [de, en]) {
       for (const style of ['supportive', 'humorous', 'factual', 'gym']) {
         for (const c of ['done', 'adapted', 'recovery', 'rest_day', 'health_pause', 'comeback']) {
-          expect(lang.motivation[style][c]).toHaveLength(3);
+          expect(lang.motivation[style][c].length).toBeGreaterThanOrEqual(3);
         }
       }
+    }
+  });
+
+  it('owner gym lines are only used for done/comeback, never for illness, rest or adapted sessions', () => {
+    const de = jest.requireActual('../../i18n/de').default;
+    expect(de.motivation.gym.done).toHaveLength(23);
+    for (const c of ['health_pause', 'rest_day', 'recovery', 'adapted']) {
+      for (const text of de.motivation.gym[c] as string[]) expect(text).not.toMatch(/Bauch|Törtchen|Quark|Hose/);
     }
   });
 

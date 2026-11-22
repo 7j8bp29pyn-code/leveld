@@ -211,7 +211,7 @@ try {
   await page.getByRole('tab', { name: /Heute/ }).click();
   await id('todo-Fortschrittsfoto machen').waitFor();
   await id('todo-check-Physio-Termin vereinbaren').click();
-  await page.getByText(/Schwer war’s|Keine Ausreden|Eisen bewegt/).waitFor();   // gym style texts
+  await id('toast').waitFor();                            // one of the gym-style lines (23 variants)
   await page.reload();
   await id('todo-check-Physio-Termin vereinbaren').waitFor();
   assert.equal(await id('todo-check-Physio-Termin vereinbaren').getAttribute('aria-checked'), 'true');
