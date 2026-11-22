@@ -217,6 +217,23 @@ try {
   assert.equal(await id('todo-check-Physio-Termin vereinbaren').getAttribute('aria-checked'), 'true');
   step('to-dos: add, suggestion, tick off on Today, persisted; gym-style feedback');
 
+  // steps: manual entry, goal progress, week chart, auto-tick rule (never overwrites an existing entry)
+  await page.getByRole('tab', { name: /Heute/ }).click();
+  await id('steps-card').click();
+  await id('steprule-Lesen-5000').click();               // "Lesen" was skipped today → must stay skipped
+  await id('steps-input').click();
+  await id('steps-input').pressSequentially('6200');
+  await id('steps-save').click();
+  await id('steps-value').getByText('6.200').waitFor();
+  await id('steps-chart').waitFor();
+  await shot('11-steps');
+  await page.goBack();
+  await id('steps-card').getByText(/6\.200/).waitFor();
+  await id('row-Lesen').getByText('Ausgelassen').waitFor();
+  await page.reload();
+  await id('steps-card').getByText(/6\.200/).waitFor();
+  step('steps: entry, goal, chart, persisted; auto rule respects existing entries');
+
   // shift work: rotating shifts with a per-day plan
   await page.getByRole('tab', { name: /Mehr/ }).click();
   await id('open-rhythm').click();

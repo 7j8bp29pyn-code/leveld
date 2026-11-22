@@ -83,6 +83,25 @@ export interface Profile {
   anchors: DayAnchors;
   /** Hour (0–14) at which the user's "day" starts – night shift workers can move it past midnight. */
   dayStartHour: number;
+  stepSettings: StepSettings;
+}
+
+export interface StepSettings {
+  /** daily step goal */
+  goal: number;
+  /** habits that are ticked off automatically once the day's steps reach minSteps (e.g. "Gassi") */
+  autoHabits: { habitId: string; minSteps: number }[];
+}
+
+export type StepSource = 'manual' | 'apple_health' | 'health_connect';
+
+/** Steps of one day from one source. Several sources per day are never added up. */
+export interface StepEntry {
+  id: string;
+  localDate: LocalDate;
+  steps: number;
+  source: StepSource;
+  updatedAt: string;
 }
 
 export type Readiness = 'fit' | 'tired' | 'exhausted' | 'sick';
@@ -263,6 +282,7 @@ export const DEFAULT_PROFILE: Profile = {
   dayRhythm: 'standard',
   anchors: { wake: '07:00', firstMeal: '08:00', workEnd: '17:00', bedtime: '23:00' },
   dayStartHour: 3,
+  stepSettings: { goal: 8000, autoHabits: [] },
 };
 
 /** Fills fields added in later versions so data stored by older versions keeps working. */
@@ -272,6 +292,7 @@ export function normalizeProfile(p: Partial<Profile> | null | undefined): Profil
     ...base,
     features: { ...DEFAULT_PROFILE.features, ...(p?.features ?? {}) },
     anchors: { ...DEFAULT_PROFILE.anchors, ...(p?.anchors ?? {}) },
+    stepSettings: { ...DEFAULT_PROFILE.stepSettings, ...(p?.stepSettings ?? {}) },
   };
 }
 

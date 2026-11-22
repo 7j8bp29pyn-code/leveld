@@ -6,6 +6,7 @@ import type { Repository, Snapshot } from '../data/repository';
 import { SupabaseRepository } from '../data/supabaseRepository';
 import { addDays, toLocalDate } from '../domain/dates';
 import { isComeback, feedbackFor, variantKey } from '../domain/motivation';
+import { habitsToAutoComplete, stepsForDay } from '../domain/steps';
 import { logicalDate } from '../domain/rhythm';
 import { ValidationError } from '../domain/entries';
 import { DISMISS_DAYS } from '../domain/phases';
@@ -65,6 +66,9 @@ interface Store {
   uploadPlan(input: PlanUploadInput): Promise<boolean>;
   openPlanUrl(plan: TrainingPlan): Promise<string | null>;
   deletePlan(plan: TrainingPlan): Promise<boolean>;
+  /** Saves manual steps and ticks off habits with a step rule (e.g. "Gassi"). */
+  saveSteps(date: LocalDate, steps: number): Promise<boolean>;
+  deleteSteps(date: LocalDate): Promise<boolean>;
   saveTodo(input: TodoInput, id?: string): Promise<boolean>;
   /** One-tap tick off / reopen with optimistic UI. */
   toggleTodo(id: string): Promise<void>;
@@ -75,7 +79,7 @@ const Ctx = createContext<Store | null>(null);
 
 const emptySnapshot = (): Snapshot => ({
   profile: { ...DEFAULT_PROFILE },
-  habits: [], fields: [], entries: [], phaseChanges: [], checkins: [], cycles: [], daySchedules: [], trainingPlans: [], todos: [],
+  habits: [], fields: [], entries: [], phaseChanges: [], checkins: [], cycles: [], daySchedules: [], trainingPlans: [], todos: [], steps: [],
 });
 
 export function errorMessage(e: unknown): string {
@@ -360,6 +364,25 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
       const saved = await run((r) => r.upsertDaySchedule(input));
       if (saved) setData((d) => ({ ...d, daySchedules: [...d.daySchedules.filter((x) => x.localDate !== saved.localDate), saved] }));
       return !!saved;
+    },
+
+    async saveSteps(date, steps) {
+      const saved = await run((r) => r.saveSteps(date, steps, 'manual'));
+      if (!saved) return false;
+      const nextSteps = [...dataRef.current.steps.filter((x) => !(x.localDate === date && x.source === 'manual')), saved];
+      dataRef.current = { ...dataRef.current, steps: nextSteps };
+      setData((d) => ({ ...d, steps: nextSteps }));
+      const d = dataRef.current;
+      for (const h of habitsToAutoComplete(d.profile.stepSettings, d.habits, d.entries, date, stepsForDay(nextSteps, date))) {
+        await store.setEntry({ habitId: h.id, localDate: date, status: 'done', note: i18n.t('steps.autoNote', { steps: stepsForDay(nextSteps, date) }) });
+      }
+      return true;
+    },
+
+    async deleteSteps(date) {
+      const ok = await run((r) => r.deleteSteps(date, 'manual').then(() => true));
+      if (ok) setData((d) => ({ ...d, steps: d.steps.filter((x) => !(x.localDate === date && x.source === 'manual')) }));
+      return !!ok;
     },
 
     async saveTodo(input, id) {

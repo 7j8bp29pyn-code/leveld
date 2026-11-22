@@ -2,8 +2,9 @@ import { buildEntry, validateCheckin, validateCycle, validateDaySchedule, valida
 import { DEFAULT_PROFILE, normalizeHabit, normalizeProfile } from '../domain/types';
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldInput, Habit, HabitInput, LocalDate, PhaseChange,
-  Profile, Todo, TodoInput, TrainingCycle, TrainingPlan,
+  Profile, StepEntry, StepSource, Todo, TodoInput, TrainingCycle, TrainingPlan,
 } from '../domain/types';
+import { validateSteps } from '../domain/steps';
 import { validateTodo } from '../domain/todos';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
@@ -45,7 +46,7 @@ export class LocalRepository implements Repository {
     if (!raw) {
       this.cache = {
         schemaVersion: SCHEMA_VERSION, profile: { ...DEFAULT_PROFILE }, habits: [], fields: [], entries: [], phaseChanges: [],
-        checkins: [], cycles: [], daySchedules: [], trainingPlans: [], todos: [],
+        checkins: [], cycles: [], daySchedules: [], trainingPlans: [], todos: [], steps: [],
       };
       return this.cache;
     }
@@ -64,6 +65,7 @@ export class LocalRepository implements Repository {
         daySchedules: parsed.daySchedules ?? [],
         trainingPlans: parsed.trainingPlans ?? [],
         todos: parsed.todos ?? [],
+        steps: parsed.steps ?? [],
       };
       return this.cache;
     } catch (e) {
@@ -88,7 +90,7 @@ export class LocalRepository implements Repository {
 
   async load(sinceDate: LocalDate): Promise<Snapshot> {
     const d = await this.read();
-    return clone({ ...d, entries: d.entries.filter((e) => e.localDate >= sinceDate) });
+    return clone({ ...d, entries: d.entries.filter((e) => e.localDate >= sinceDate), steps: d.steps.filter((e) => e.localDate >= sinceDate) });
   }
 
   saveProfile(p: Profile): Promise<Profile> {
@@ -222,6 +224,21 @@ export class LocalRepository implements Repository {
 
   deleteDaySchedule(localDate: LocalDate): Promise<void> {
     return this.mutate((d) => { d.daySchedules = d.daySchedules.filter((x) => x.localDate !== localDate); });
+  }
+
+  saveSteps(localDate: LocalDate, steps: number, source: StepSource): Promise<StepEntry> {
+    return this.mutate((d) => {
+      const v = validateSteps(steps);
+      const i = d.steps.findIndex((x) => x.localDate === localDate && x.source === source);
+      const next: StepEntry = { id: i >= 0 ? d.steps[i].id : this.newId(), localDate, steps: v, source, updatedAt: this.now() };
+      if (i >= 0) d.steps[i] = next;
+      else d.steps.push(next);
+      return clone(next);
+    });
+  }
+
+  deleteSteps(localDate: LocalDate, source: StepSource): Promise<void> {
+    return this.mutate((d) => { d.steps = d.steps.filter((x) => !(x.localDate === localDate && x.source === source)); });
   }
 
   saveTodo(input: TodoInput, id?: string): Promise<Todo> {

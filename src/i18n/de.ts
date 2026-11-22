@@ -267,6 +267,16 @@ const de = {
       mealPrep: 'Meal-Prep für die Woche planen', bottle: 'Trinkflasche besorgen', bedtime: 'Feste Schlafenszeit festlegen', gymBag: 'Sporttasche am Vorabend packen',
     },
   },
+  steps: {
+    title: 'Schritte', today: 'Schritte heute', goal: 'Tagesziel', input: 'Schritte eintragen', save: 'Speichern', of: 'von {{goal}}',
+    noData: 'Noch nichts eingetragen', week: 'Woche', month: 'Monat', average: 'Ø pro Tag (Tage mit Eintrag)', total: 'Gesamt',
+    goalDays: 'Ziel erreicht an {{n}} Tagen', vsPrev: '{{pct}} % gegenüber Vorzeitraum', vsPrevNone: 'Kein Vergleich möglich (keine Daten im Vorzeitraum)',
+    missing: 'Tage ohne Eintrag erscheinen als Lücke, nicht als 0.', recent: 'Letzte Tage', edit: 'Ändern', remove: 'Entfernen',
+    auto: 'Automatisch abhaken', autoHint: 'Eine Gewohnheit (z. B. „Gassi“) wird abgehakt, sobald deine Schritte des Tages den Wert erreichen.',
+    autoNone: 'Keine Regel', autoNote: 'Automatisch abgehakt: {{steps}} Schritte',
+    health: 'Automatischer Import aus Apple Health / Health Connect folgt mit der eigenen LEVELD-App (nicht in Expo Go möglich). Bis dahin trägst du die Schritte aus der Health-App hier ein.',
+    source: { manual: 'manuell', apple_health: 'Apple Health', health_connect: 'Health Connect' },
+  },
   plans: {
     title: 'Trainingspläne', hint: 'Lade deinen bestehenden Plan als Foto oder PDF hoch. Die Datei wird privat in deinem Konto gespeichert – nur du kannst sie sehen.',
     photo: 'Foto aufnehmen', library: 'Aus Fotos wählen', pdf: 'PDF auswählen', name: 'Titel (optional)', namePlaceholder: 'z. B. Push/Pull/Legs',

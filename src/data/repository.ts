@@ -1,6 +1,6 @@
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
-  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, Todo, TodoInput, TrainingCycle, TrainingPlan,
+  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, StepEntry, StepSource, Todo, TodoInput, TrainingCycle, TrainingPlan,
 } from '../domain/types';
 
 export interface Snapshot {
@@ -15,6 +15,7 @@ export interface Snapshot {
   daySchedules: DaySchedule[];
   trainingPlans: TrainingPlan[];
   todos: Todo[];
+  steps: StepEntry[];
 }
 
 /**
@@ -49,6 +50,9 @@ export interface Repository {
   /** Short-lived signed URL to view the file. */
   planUrl(plan: TrainingPlan): Promise<string>;
   deletePlan(plan: TrainingPlan): Promise<void>;
+  /** One value per day and source (upsert). */
+  saveSteps(localDate: LocalDate, steps: number, source: StepSource): Promise<StepEntry>;
+  deleteSteps(localDate: LocalDate, source: StepSource): Promise<void>;
   saveTodo(input: TodoInput, id?: string): Promise<Todo>;
   /** Tick off (doneAt = now) or reopen (null). */
   setTodoDone(id: string, done: boolean): Promise<Todo>;

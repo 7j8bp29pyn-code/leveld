@@ -13,6 +13,7 @@ import { currentCycle, deloadHint, isPlannedRestDay, NO_PROGRESSION_PHASES } fro
 import { FULFILLED, type Readiness } from '../../domain/types';
 import { ReadinessAdvice, TrainingOptions } from '../../ui/readinessViews';
 import { todosForDay } from '../../domain/todos';
+import { stepsForDay } from '../../domain/steps';
 import { TodoRow } from '../../ui/todoViews';
 import { useStore } from '../../state/AppStore';
 import { Badge, Button, Card, HabitIcon, Muted, ProgressBar, Screen, SectionTitle } from '../../ui/components';
@@ -37,6 +38,7 @@ export default function Today() {
   const next = isToday ? nextItem(items, nowTime()) : null;
 
   const todoItems = todosForDay(data.todos, day, today, data.profile.dayStartHour);
+  const stepsToday = stepsForDay(data.steps, day);
   const features = data.profile.features;
   const checkin = features.checkin ? data.checkins.find((c) => c.localDate === day) ?? null : null;
   const assessment = assessReadiness(checkin);
@@ -103,6 +105,18 @@ export default function Today() {
           </Pressable>
         )}
         {total > 0 && done === total && <Muted style={{ marginTop: space.md, color: colors.success }}>{t('today.allDone')}</Muted>}
+      </Card>
+
+      <Card testID="steps-card" onPress={() => router.push('/steps')} style={{ marginTop: space.md, flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        <Ionicons name="footsteps-outline" size={22} color={colors.textMuted} />
+        <View style={{ flex: 1 }}>
+          <Text style={font.body}>
+            {t('steps.title')}: {stepsToday !== null ? stepsToday.toLocaleString('de-DE') : '–'}
+            <Text style={{ color: colors.textMuted }}> / {data.profile.stepSettings.goal.toLocaleString('de-DE')}</Text>
+          </Text>
+          <View style={{ marginTop: 6 }}><ProgressBar value={stepsToday === null ? null : stepsToday / data.profile.stepSettings.goal} height={4} /></View>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
       </Card>
 
       {showSetup && (

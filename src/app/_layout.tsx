@@ -68,6 +68,7 @@ function Gate({ signedIn }: { signedIn: boolean }) {
         <Stack.Screen name="rhythm" options={{ title: t('rhythm.title') }} />
         <Stack.Screen name="cycles" options={{ title: t('cycles.title') }} />
         <Stack.Screen name="plans" options={{ title: t('plans.title') }} />
+        <Stack.Screen name="steps" options={{ title: t('steps.title') }} />
       </Stack.Protected>
     </Stack>
   );

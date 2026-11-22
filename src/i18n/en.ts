@@ -236,6 +236,16 @@ const en: Widen<typeof de> = {
       mealPrep: 'Plan meal prep for the week', bottle: 'Get a water bottle', bedtime: 'Set a fixed bedtime', gymBag: 'Pack gym bag the evening before',
     },
   },
+  steps: {
+    title: 'Steps', today: 'Steps today', goal: 'Daily goal', input: 'Enter steps', save: 'Save', of: 'of {{goal}}',
+    noData: 'Nothing entered yet', week: 'Week', month: 'Month', average: 'Ø per day (days with data)', total: 'Total',
+    goalDays: 'Goal reached on {{n}} days', vsPrev: '{{pct}} % compared with previous period', vsPrevNone: 'No comparison possible (no data in previous period)',
+    missing: 'Days without entry show as a gap, not as 0.', recent: 'Recent days', edit: 'Change', remove: 'Remove',
+    auto: 'Tick off automatically', autoHint: 'A habit (e.g. “Dog walk”) is ticked off once your steps of the day reach the value.',
+    autoNone: 'No rule', autoNote: 'Ticked off automatically: {{steps}} steps',
+    health: 'Automatic import from Apple Health / Health Connect follows with the own LEVELD app (not possible in Expo Go). Until then enter the steps from the Health app here.',
+    source: { manual: 'manual', apple_health: 'Apple Health', health_connect: 'Health Connect' },
+  },
   plans: {
     title: 'Training plans', hint: 'Upload your existing plan as a photo or PDF. The file is stored privately in your account – only you can see it.',
     photo: 'Take photo', library: 'Choose from photos', pdf: 'Choose PDF', name: 'Title (optional)', namePlaceholder: 'e.g. Push/Pull/Legs',

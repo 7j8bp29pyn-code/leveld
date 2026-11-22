@@ -92,6 +92,12 @@ export default function More() {
         </View>
       )}
 
+      <SectionTitle>{t('steps.title')}</SectionTitle>
+      <Card testID="open-steps" onPress={() => router.push('/steps')}>
+        <Text style={font.body}>{t('steps.title')} · {t('steps.goal')} {profile.stepSettings.goal.toLocaleString('de-DE')}</Text>
+        <Muted>{t('steps.autoHint')}</Muted>
+      </Card>
+
       <SectionTitle>{t('plans.title')}</SectionTitle>
       <Card testID="open-plans" onPress={() => router.push('/plans')}>
         <Text style={font.body}>{t('plans.title')} ({store.data.trainingPlans.length})</Text>

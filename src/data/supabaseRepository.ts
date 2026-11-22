@@ -3,8 +3,9 @@ import { buildEntry, planStoragePath, validateCheckin, validateCycle, validateDa
 import { DEFAULT_PROFILE, normalizeProfile } from '../domain/types';
 import type {
   CheckinInput, CycleInput, DailyCheckin, DaySchedule, DayScheduleInput, EntryInput, FieldDefinition, FieldInput, Habit, HabitEntry,
-  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, Todo, TodoInput, TrainingCycle, TrainingPlan,
+  HabitInput, LocalDate, PhaseChange, PlanUploadInput, Profile, StepEntry, StepSource, Todo, TodoInput, TrainingCycle, TrainingPlan,
 } from '../domain/types';
+import { validateSteps } from '../domain/steps';
 import { validateTodo } from '../domain/todos';
 import { planFieldSync } from './fieldSync';
 import { RepositoryError, type Repository, type Snapshot } from './repository';
@@ -20,6 +21,8 @@ export const mapProfile = (r: Row): Profile => normalizeProfile({
   trainingLevel: r.training_level ?? null, trainingGoals: r.training_goals ?? [], startPreference: r.start_preference ?? null,
   trainingDays: r.training_days ?? [], trainingSettings: r.training_settings ?? [], trainingLimitations: r.training_limitations ?? '',
   communicationStyle: r.communication_style ?? 'supportive', features: r.features ?? undefined, healthConsentAt: r.health_consent_at ?? null,
+  // step settings live in the free-form features JSON (no extra column needed)
+  stepSettings: r.features?.stepSettings ?? undefined,
   dayRhythm: r.day_rhythm ?? 'standard', anchors: r.day_anchors ?? undefined, dayStartHour: r.day_start_hour ?? DEFAULT_PROFILE.dayStartHour,
 });
 const profileRow = (p: Profile) => ({
@@ -28,7 +31,7 @@ const profileRow = (p: Profile) => ({
   phase_window_days: p.phaseWindowDays, onboarding_completed: p.onboardingCompleted,
   training_level: p.trainingLevel, training_goals: p.trainingGoals, start_preference: p.startPreference, training_days: p.trainingDays,
   training_settings: p.trainingSettings, training_limitations: p.trainingLimitations, communication_style: p.communicationStyle,
-  features: p.features, health_consent_at: p.healthConsentAt, day_rhythm: p.dayRhythm, day_anchors: p.anchors, day_start_hour: p.dayStartHour,
+  features: { ...p.features, stepSettings: p.stepSettings }, health_consent_at: p.healthConsentAt, day_rhythm: p.dayRhythm, day_anchors: p.anchors, day_start_hour: p.dayStartHour,
 });
 
 export const mapHabit = (r: Row): Habit => ({
@@ -80,6 +83,7 @@ export const mapCycle = (r: Row): TrainingCycle => ({
 export const mapTodo = (r: Row): Todo => ({
   id: r.id, title: r.title, dueDate: r.due_date, doneAt: r.done_at, note: r.note, createdAt: r.created_at, updatedAt: r.updated_at,
 });
+export const mapSteps = (r: Row): StepEntry => ({ id: r.id, localDate: r.local_date, steps: r.steps, source: r.source, updatedAt: r.updated_at });
 export const PLAN_BUCKET = 'training-plans';
 export const mapPlan = (r: Row): TrainingPlan => ({
   id: r.id, title: r.title, storagePath: r.storage_path, mimeType: r.mime_type, sizeBytes: r.size_bytes, note: r.note, createdAt: r.created_at,
@@ -119,7 +123,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async load(sinceDate: LocalDate): Promise<Snapshot> {
-    const [p, h, f, e, c, ci, cy, ds, tp, td] = await Promise.all([
+    const [p, h, f, e, c, ci, cy, ds, tp, td, st] = await Promise.all([
       this.db.from('profiles').select('*').maybeSingle(),
       this.db.from('habits').select('*').order('sort_order'),
       this.db.from('field_definitions').select('*').order('sort_order'),
@@ -131,6 +135,7 @@ export class SupabaseRepository implements Repository {
       this.db.from('training_plans').select('*').order('created_at', { ascending: false }),
       // open to-dos + those done within the history window
       this.db.from('todos').select('*').or(`done_at.is.null,done_at.gte.${sinceDate}`),
+      this.db.from('daily_steps').select('*').gte('local_date', sinceDate),
     ]);
     const profileRowData = checkMaybe(p);
     return {
@@ -146,6 +151,7 @@ export class SupabaseRepository implements Repository {
       trainingPlans: tp.error ? [] : (tp.data ?? []).map(mapPlan),
       // optional module: tolerated if migration 4 is missing
       todos: td.error ? [] : (td.data ?? []).map(mapTodo),
+      steps: st.error ? [] : (st.data ?? []).map(mapSteps),
     };
   }
 
@@ -285,6 +291,19 @@ export class SupabaseRepository implements Repository {
 
   async deleteDaySchedule(localDate: LocalDate) {
     checkMaybe(await this.db.from('day_schedules').delete().eq('local_date', localDate));
+  }
+
+  async saveSteps(localDate: LocalDate, steps: number, source: StepSource): Promise<StepEntry> {
+    const user_id = await this.userId();
+    const row = check(
+      await this.db.from('daily_steps').upsert({ user_id, local_date: localDate, steps: validateSteps(steps), source }, { onConflict: 'user_id,local_date,source' })
+        .select().single(),
+    );
+    return mapSteps(row);
+  }
+
+  async deleteSteps(localDate: LocalDate, source: StepSource) {
+    checkMaybe(await this.db.from('daily_steps').delete().eq('local_date', localDate).eq('source', source));
   }
 
   async saveTodo(input: TodoInput, id?: string): Promise<Todo> {

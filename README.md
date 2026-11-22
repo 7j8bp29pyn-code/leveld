@@ -50,6 +50,10 @@ Dauerhafter QR-Code (öffnet immer die neueste Testversion): [docs/leveld-test-q
 Link: `exp://u.expo.dev/198b19ab-8611-47ef-ba19-41400a48b4a4?runtime-version=1.0.0&channel-name=preview`
 Gilt, solange die App-Version in `app.json` 1.0.0 bleibt; neue Updates mit `eas update --channel preview --environment preview`.
 
+## Schritte
+
+Manuelle Schritte pro Tag (Tabelle `daily_steps` aus der ersten Migration), Tagesziel, Wochen-/Monatsübersicht mit Vergleich zum Vorzeitraum, automatisches Abhaken einer Gewohnheit ab einer Schrittzahl (überschreibt nie vorhandene Einträge). Apple Health / Health Connect: Datenmodell vorbereitet (Quelle je Tag, keine Doppelzählung), Import erst mit eigenem Development Build (nicht in Expo Go).
+
 ## Update 3 & 4 – Trainingsplan-Upload, Aufgaben, Gym-Stil
 
 - Migrationen `20261119000001_training_plans.sql` und `20261120000001_todos_gym_style.sql` im Supabase-SQL-Editor ausführen (additiv, mehrfach ausführbar).
