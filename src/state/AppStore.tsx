@@ -192,7 +192,11 @@ export function AppStoreProvider({ auth, children }: { auth: AuthState; children
     async saveProfile(patch) {
       const next = { ...dataRef.current.profile, ...patch };
       const saved = await run((r) => r.saveProfile(next));
-      if (saved) setData((d) => ({ ...d, profile: saved }));
+      if (saved) {
+        // keep the ref current immediately so a following save never merges into stale data
+        dataRef.current = { ...dataRef.current, profile: saved };
+        setData((d) => ({ ...d, profile: saved }));
+      }
       return !!saved;
     },
 

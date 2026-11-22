@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { normalizeTime } from '../domain/dates';
@@ -41,8 +41,6 @@ export default function Onboarding() {
   const [mode, setMode] = useState<Mode>('guided');
   const [style, setStyle] = useState<SetupAnswers['style']>('supportive');
   const [busy, setBusy] = useState(false);
-  // habits already created in an earlier attempt (e.g. when saving the profile failed) – never create twice
-  const created = useRef(new Set<string>());
 
   // detail questions only when training is part of the plan
   const steps: Step[] = ['welcome', 'name', 'level', 'goals', 'start', ...(start && start !== 'habits_only' ? ['details' as const] : []),
@@ -68,7 +66,17 @@ export default function Onboarding() {
     const all: Pick[] = addTraining ? [{ name: t('kind.training'), preset: null }, ...picks] : picks;
     const active = mode === 'guided' ? all.slice(0, startLimit) : all;
     const later = mode === 'guided' ? all.slice(startLimit).map((p) => p.name) : [];
+    const profilePatch = {
+      ...patch, displayName: name.trim(), habitBacklog: later, mode,
+      defaultReminderTime: reminder.kind === 'fixed' ? reminder.time : null,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin',
+    };
+    // 1) save the profile first: if this fails, nothing else has been created yet
+    if (!(await store.saveProfile({ ...profilePatch, onboardingCompleted: false }))) { setBusy(false); return; }
+    // 2) create habits – skipping any that already exist (e.g. from an interrupted earlier attempt)
+    const existing = new Set(store.data.habits.map((h) => h.name.trim().toLowerCase()));
     for (const [i, p] of active.entries()) {
+      if (existing.has(p.name.trim().toLowerCase())) continue;
       const isGeneratedTraining = addTraining && i === 0;
       const h = habitFromName(p.name, p.preset, {
         startDate: store.today, sortOrder: i, level, features: patch.features, trainingDays: details.days,
@@ -77,17 +85,12 @@ export default function Onboarding() {
         reminderAnchor: reminder.kind === 'relative' ? reminder.anchor : null,
         reminderOffsetMin: reminder.kind === 'relative' ? reminder.offset : 0,
       });
-      const key = `${p.preset ?? ''}|${p.name}`;
-      if (created.current.has(key)) continue;
       const id = await store.createHabit(h.input, h.fields);
       if (!id) { setBusy(false); return; }
-      created.current.add(key);
+      existing.add(p.name.trim().toLowerCase());
     }
-    const ok = await store.saveProfile({
-      ...patch, displayName: name.trim(), habitBacklog: later, mode,
-      defaultReminderTime: reminder.kind === 'fixed' ? reminder.time : null,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin', onboardingCompleted: true,
-    });
+    // 3) only now mark the onboarding as completed
+    const ok = await store.saveProfile({ onboardingCompleted: true });
     if (!ok) setBusy(false);
   }
 
